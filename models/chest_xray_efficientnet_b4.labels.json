@@ -1,0 +1,21 @@
+{
+  "backend_expected_model": "timm efficientnet_b4 num_classes=15",
+  "labels": [
+    "Atelectasis",
+    "Cardiomegaly",
+    "Effusion",
+    "Infiltration",
+    "Mass",
+    "Nodule",
+    "Pneumonia",
+    "Pneumothorax",
+    "Consolidation",
+    "Edema",
+    "Emphysema",
+    "Fibrosis",
+    "Pleural Thickening",
+    "Hernia",
+    "No Finding"
+  ],
+  "state_dict_path": "./models/chest_xray_efficientnet_b4.pt"
+}

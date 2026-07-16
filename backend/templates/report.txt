@@ -1,0 +1,28 @@
+MEDORAAI CLINICAL DECISION-SUPPORT REPORT
+Report ID: {{ report_id }}
+Scan ID: {{ scan_id }}
+Generated: {{ generated_at }}
+
+PATIENT
+Patient ID: {{ patient_id }}
+Scan Date: {{ scan_date }}
+Scan Type: {{ scan_type }}
+Modality: {{ modality }}
+
+AI ANALYSIS
+Primary Finding: {{ top_label }}
+Confidence: {{ "%.1f"|format(confidence * 100) }}%
+Severity: {{ severity }}
+Report Source: {{ llm_provider }}
+
+FINDINGS
+{{ findings }}
+
+IMPRESSION
+{{ impression }}
+
+RECOMMENDATIONS
+{{ recommendations }}
+
+DISCLAIMER
+{{ disclaimer }}

@@ -216,3 +216,27 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Node / frontend build output
+node_modules/
+frontend/dist/
+
+# Local tooling and editor state
+.tmp/
+.agents/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# MedoraAI runtime data (uploads, generated heatmaps, thumbnails, and SQLite)
+backend/data/
+data/*
+!data/.gitkeep
+
+# Experimental checkouts and duplicate training artifacts
+MedVision-AI/
+brain_tumor_analysis/
+brainnn/
+models/best_brain_model.keras
+medoraai_chest_xray_model_export.zip

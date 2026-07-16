@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>MedoraAI — Diagnostic Report {{ report_id }}</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 22mm 18mm 22mm 18mm;
+        }
+
+        body {
+            font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+            color: #1a1a2e;
+            line-height: 1.65;
+            font-size: 11.5px;
+        }
+
+        /* ---- HEADER ---- */
+        .report-header {
+            border-bottom: 3px solid #0066cc;
+            padding-bottom: 12px;
+            margin-bottom: 18px;
+        }
+        .report-header h1 {
+            font-size: 20px;
+            color: #0066cc;
+            margin: 0 0 4px 0;
+            letter-spacing: 0.5px;
+        }
+        .report-header .subtitle {
+            font-size: 11px;
+            color: #666;
+            margin: 0;
+        }
+        .report-header .meta {
+            font-size: 10px;
+            color: #888;
+            margin-top: 6px;
+        }
+
+        /* ---- SECTIONS ---- */
+        .section {
+            margin-bottom: 16px;
+            page-break-inside: avoid;
+        }
+        .section h2 {
+            font-size: 12px;
+            color: #0066cc;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-bottom: 1px solid #e0e0e0;
+            padding-bottom: 3px;
+            margin-bottom: 8px;
+        }
+        .section p, .section .section-body {
+            font-size: 11.5px;
+            line-height: 1.7;
+            margin: 4px 0;
+            text-align: justify;
+            white-space: pre-line;
+        }
+
+        /* ---- PATIENT INFO TABLE ---- */
+        .info-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 14px;
+        }
+        .info-table td {
+            padding: 4px 10px;
+            font-size: 11px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .info-table td.label {
+            font-weight: 600;
+            color: #333;
+            width: 35%;
+        }
+        .info-table td.value {
+            color: #555;
+        }
+
+        /* ---- SEVERITY BADGE ---- */
+        .severity-badge {
+            display: inline-block;
+            padding: 3px 14px;
+            border-radius: 4px;
+            font-weight: 700;
+            font-size: 12px;
+            letter-spacing: 0.5px;
+        }
+        .severity-Normal { background: #e6f4ea; color: #1e7e34; }
+        .severity-Mild { background: #fff8e1; color: #f57f17; }
+        .severity-Moderate { background: #fff3e0; color: #e65100; }
+        .severity-Severe { background: #fde0dc; color: #c62828; }
+
+        /* ---- CONFIDENCE BAR ---- */
+        .confidence-bar-container {
+            background: #f0f0f0;
+            border-radius: 4px;
+            height: 16px;
+            width: 200px;
+            display: inline-block;
+            vertical-align: middle;
+            margin-left: 8px;
+        }
+        .confidence-bar-fill {
+            height: 100%;
+            border-radius: 4px;
+            background: linear-gradient(90deg, #0066cc, #06b6d4);
+        }
+
+        /* ---- LOW CONFIDENCE WARNING ---- */
+        .low-confidence-warning {
+            background: #fff3cd;
+            border: 1px solid #ffab40;
+            border-radius: 6px;
+            padding: 10px 14px;
+            font-size: 11px;
+            line-height: 1.5;
+            margin-bottom: 14px;
+            color: #6d4c00;
+        }
+        .low-confidence-warning strong {
+            color: #e65100;
+        }
+
+        /* ---- SCORES TABLE ---- */
+        .scores-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 10px;
+            margin-top: 8px;
+        }
+        .scores-table th {
+            text-align: left;
+            padding: 4px 8px;
+            background: #f5f7fa;
+            color: #333;
+            border-bottom: 1px solid #ddd;
+        }
+        .scores-table td {
+            padding: 3px 8px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .scores-table .score-bar {
+            background: #e8f0fe;
+            height: 10px;
+            border-radius: 3px;
+            display: inline-block;
+            vertical-align: middle;
+        }
+        .scores-table .score-bar-fill {
+            background: linear-gradient(90deg, #0066cc, #2196f3);
+            height: 100%;
+            border-radius: 3px;
+        }
+
+        /* ---- HEATMAP IMAGE ---- */
+        .heatmap-section {
+            text-align: center;
+            margin-bottom: 16px;
+            page-break-inside: avoid;
+        }
+        .heatmap-section img {
+            max-width: 280px;
+            border-radius: 6px;
+            border: 1px solid #e0e0e0;
+            margin: 8px auto;
+            display: block;
+        }
+        .heatmap-caption {
+            font-size: 10px;
+            color: #666;
+            margin-top: 6px;
+            font-style: italic;
+        }
+        .heatmap-label {
+            display: inline-block;
+            background: #e8f0fe;
+            color: #1a73e8;
+            font-size: 10px;
+            padding: 2px 10px;
+            border-radius: 3px;
+            font-weight: 600;
+            margin-top: 4px;
+        }
+
+        /* ---- METHODOLOGY ---- */
+        .methodology {
+            background: #f5f7fa;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 10px 14px;
+            font-size: 10px;
+            line-height: 1.6;
+            margin-bottom: 14px;
+            page-break-inside: avoid;
+        }
+        .methodology h3 {
+            font-size: 11px;
+            color: #0066cc;
+            margin: 0 0 6px 0;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* ---- LIMITATIONS ---- */
+        .limitations {
+            background: #fafafa;
+            border: 1px solid #e8e8e8;
+            border-radius: 6px;
+            padding: 10px 14px;
+            font-size: 10px;
+            line-height: 1.6;
+            margin-bottom: 14px;
+            page-break-inside: avoid;
+        }
+        .limitations h3 {
+            font-size: 11px;
+            color: #666;
+            margin: 0 0 6px 0;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* ---- DISCLAIMER ---- */
+        .disclaimer {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 6px;
+            padding: 12px 14px;
+            font-size: 10px;
+            line-height: 1.5;
+            margin-top: 20px;
+            page-break-inside: avoid;
+        }
+        .disclaimer strong {
+            color: #856404;
+        }
+
+        /* ---- LLM BADGE ---- */
+        .llm-badge {
+            display: inline-block;
+            background: #e8f0fe;
+            color: #1a73e8;
+            font-size: 9px;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+        }
+
+        /* ---- DIFFERENTIAL ---- */
+        .differential-list {
+            margin: 4px 0 4px 20px;
+            padding: 0;
+            font-size: 11px;
+        }
+        .differential-list li {
+            margin-bottom: 3px;
+            color: #555;
+        }
+
+        /* ---- FOOTER ---- */
+        .footer {
+            font-size: 9px;
+            color: #aaa;
+            text-align: center;
+            margin-top: 24px;
+            padding-top: 8px;
+            border-top: 1px solid #eee;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- HEADER -->
+    <div class="report-header">
+        <h1>🏥 MedoraAI — AI Diagnostic Report</h1>
+        <p class="subtitle">Explainable Multi-Modal Medical Image Diagnosis Platform</p>
+        <p class="meta">
+            Report ID: {{ report_id }} &nbsp;|&nbsp;
+            Generated: {{ generated_at }} &nbsp;|&nbsp;
+            <span class="llm-badge">Report by: {{ llm_provider | upper }}</span>
+        </p>
+    </div>
+
+    <!-- PATIENT INFORMATION -->
+    <div class="section">
+        <h2>Patient Information</h2>
+        <table class="info-table">
+            <tr>
+                <td class="label">Patient ID</td>
+                <td class="value">{{ patient_id }}</td>
+            </tr>
+            <tr>
+                <td class="label">Scan Date</td>
+                <td class="value">{{ scan_date }}</td>
+            </tr>
+            <tr>
+                <td class="label">Scan Type</td>
+                <td class="value">{{ scan_type | replace('_', ' ') | title }}</td>
+            </tr>
+            <tr>
+                <td class="label">Modality</td>
+                <td class="value">{{ modality }}</td>
+            </tr>
+            <tr>
+                <td class="label">Analyzed By</td>
+                <td class="value">MedoraAI Diagnostic Engine v1.0</td>
+            </tr>
+        </table>
+    </div>
+
+    <!-- LOW CONFIDENCE WARNING -->
+    {% if is_low_confidence %}
+    <div class="low-confidence-warning">
+        <strong>⚠ LOW CONFIDENCE RESULT:</strong> The AI model confidence for the primary finding
+        is below 50%, indicating significant diagnostic uncertainty. This result should be
+        interpreted with particular caution. Low-confidence AI classifications have higher
+        false-positive rates and require careful radiologist review before any clinical action.
+    </div>
+    {% endif %}
+
+    <!-- AI CLASSIFICATION -->
+    <div class="section">
+        <h2>AI Classification Result</h2>
+        <p>
+            <strong>Primary Finding:</strong> {{ top_label }}
+            &nbsp;&nbsp;
+            <strong>Confidence:</strong> {{ "%.1f" | format(confidence * 100) }}%
+            <span class="confidence-bar-container">
+                <span class="confidence-bar-fill" style="width: {{ (confidence * 100) | int }}%"></span>
+            </span>
+        </p>
+        <p>
+            <strong>Severity:</strong>
+            <span class="severity-badge severity-{{ severity }}">{{ severity | upper }}</span>
+        </p>
+    </div>
+
+    <!-- GRAD-CAM HEATMAP -->
+    {% if heatmap_b64 %}
+    <div class="heatmap-section">
+        <h2 style="font-size: 12px; color: #0066cc; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid #e0e0e0; padding-bottom: 3px; text-align: left;">
+            AI Attention Map (Grad-CAM)
+        </h2>
+        <img src="data:image/png;base64,{{ heatmap_b64 }}" alt="Grad-CAM Heatmap" />
+        {% if heatmap_target_label %}
+        <span class="heatmap-label">Grad-CAM Target: {{ heatmap_target_label }}</span>
+        {% endif %}
+        <p class="heatmap-caption">
+            This heatmap shows actual gradient-weighted class activation from the trained neural network.
+            Warmer colors (red/yellow) indicate regions of higher model attention for the target class.
+            This is NOT a simulated overlay — it represents real model activations.
+        </p>
+    </div>
+    {% endif %}
+
+    <!-- FINDINGS -->
+    <div class="section">
+        <h2>Findings</h2>
+        <div class="section-body">{{ findings }}</div>
+    </div>
+
+    <!-- IMPRESSION -->
+    <div class="section">
+        <h2>Impression</h2>
+        <div class="section-body">{{ impression }}</div>
+    </div>
+
+    <!-- RECOMMENDATIONS -->
+    {% if recommendations %}
+    <div class="section">
+        <h2>Recommendations</h2>
+        <div class="section-body">{{ recommendations }}</div>
+    </div>
+    {% endif %}
+
+    <!-- DIFFERENTIAL CONSIDERATIONS -->
+    {% if secondary_findings and secondary_findings | length > 0 %}
+    <div class="section">
+        <h2>Differential Considerations</h2>
+        <p style="font-size: 11px; color: #555; margin-bottom: 6px;">
+            The model also produced elevated classification scores for the following pathologies.
+            These may represent co-existing conditions or classification overlap:
+        </p>
+        <ul class="differential-list">
+            {% for sf in secondary_findings %}
+            <li><strong>{{ sf.label }}</strong>: {{ "%.1f" | format(sf.score * 100) }}%</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    <!-- ALL CLASSIFICATION SCORES -->
+    {% if all_scores and all_scores | length > 2 %}
+    <div class="section">
+        <h2>Detailed Classification Scores</h2>
+        <table class="scores-table">
+            <thead>
+                <tr>
+                    <th style="width: 40%;">Pathology</th>
+                    <th style="width: 35%;">Score</th>
+                    <th style="width: 25%;">Confidence</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for label, score in all_scores | dictsort(by='value', reverse=true) %}
+                <tr>
+                    <td>{{ label }}</td>
+                    <td>
+                        <span class="score-bar" style="width: 100px;">
+                            <span class="score-bar-fill" style="width: {{ (score * 100) | int }}%;"></span>
+                        </span>
+                    </td>
+                    <td>{{ "%.1f" | format(score * 100) }}%</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    <!-- AI METHODOLOGY -->
+    {% if methodology %}
+    <div class="methodology">
+        <h3>🔬 AI Methodology</h3>
+        <p style="margin: 0;">{{ methodology }}</p>
+    </div>
+    {% endif %}
+
+    <!-- LIMITATIONS -->
+    {% if limitations %}
+    <div class="limitations">
+        <h3>📋 Known Limitations</h3>
+        <p style="margin: 0;">{{ limitations }}</p>
+    </div>
+    {% endif %}
+
+    <!-- DISCLAIMER -->
+    <div class="disclaimer">
+        <strong>⚠ DISCLAIMER:</strong> {{ disclaimer }}
+    </div>
+
+    <!-- FOOTER -->
+    <div class="footer">
+        <p>Generated by MedoraAI Diagnostic Engine v1.0 — For clinical decision support only — Not a certified medical device</p>
+    </div>
+
+</body>
+</html>

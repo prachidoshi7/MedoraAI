@@ -1,0 +1,43 @@
+version: '3.9'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: medoraai-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/app/models:ro
+      - medoraai-data:/app/data
+    environment:
+      - SECRET_KEY=${SECRET_KEY:-medoraai-hackathon-secret}
+      - DATA_DIR=/app/data
+      - CHEST_MODEL_PATH=${CHEST_MODEL_PATH:-}
+      - BRAIN_MODEL_PATH=${BRAIN_MODEL_PATH:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - DEMO_USER=${DEMO_USER:-demo}
+      - DEMO_PASSWORD=${DEMO_PASSWORD:-demo123}
+      - LOG_LEVEL=info
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: medoraai-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  medoraai-data:
+    driver: local

@@ -1,11 +1,30 @@
 # Guides
 
-Use this folder for practical how-to documentation that helps teammates repeat a workflow.
+Practical how-to documentation for running and maintaining MedoraAI.
 
-## Suggested Guides
+## Current Guides
 
-- `setup.md` - local development setup.
-- `demo-runbook.md` - steps to run the final demo.
-- `dataset-guide.md` - dataset download, structure, and preprocessing notes.
-- `contribution-guide.md` - branch, commit, PR, and review workflow.
+- `setup.md` - local setup, model placement, verification, and run commands.
+- `model-evaluation.md` - measure model accuracy/AUC and understand heatmap/report limitations.
 
+## Common Commands
+
+Backend:
+
+```powershell
+cd backend
+python -m uvicorn main:app --reload --port 8000
+```
+
+Frontend:
+
+```powershell
+cd frontend
+npm run dev -- --host 127.0.0.1 --port 5173
+```
+
+Health:
+
+```text
+http://127.0.0.1:8000/health
+```
