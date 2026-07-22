@@ -39,7 +39,13 @@ class Settings(BaseSettings):
         description="Path to brain tumor model (.keras). EfficientNetB3 4-class classifier."
     )
 
-    # --- LLM API Keys (try in order: Gemini → Groq → Claude → OpenAI → template fallback) ---
+    # --- Pre-inference scan type verification ---
+    STRICT_SCAN_TYPE_VALIDATION: bool = True
+    SCAN_TYPE_VERIFIER_MODEL: Optional[str] = None
+    SCAN_TYPE_GROQ_MODEL: str = "qwen/qwen3.6-27b"
+    SCAN_TYPE_MIN_CONFIDENCE: float = 0.85
+
+    # --- Clinical report generation ---
     GEMINI_API_KEY: Optional[str] = Field(
         default=None,
         description="Google Gemini API key for multimodal image-aware reports"
@@ -47,6 +53,14 @@ class Settings(BaseSettings):
     GEMINI_MODEL: str = Field(
         default="gemini-3-flash-preview",
         description="Preferred Gemini model for image-aware reports"
+    )
+    SARVAM_API_KEY: Optional[str] = Field(
+        default=None,
+        description="Sarvam API key used for patient-language translation"
+    )
+    SARVAM_TRANSLATE_MODEL: str = Field(
+        default="sarvam-translate:v1",
+        description="Sarvam text translation model"
     )
     GROQ_API_KEY: Optional[str] = Field(
         default=None,

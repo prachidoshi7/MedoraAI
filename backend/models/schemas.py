@@ -86,12 +86,22 @@ class ReportData(BaseModel):
     top_label: str = ""
     confidence: float = 0.0
     all_scores: dict[str, float] = Field(default_factory=dict)
+    clinical_history: str = "Not provided."
+    technique: str = ""
+    comparison: str = "No prior imaging was supplied for comparison."
+    image_quality: str = ""
     findings: str
     impression: str
+    differential_diagnosis: str = ""
     recommendations: str = ""
+    critical_communication: str = "No critical communication generated."
     severity: str
     disclaimer: str
     generated_at: str
+    heatmap_target_label: str = ""
+    is_low_confidence: bool = False
+    methodology: str = ""
+    limitations: str = ""
 
 
 class ReportResponse(BaseModel):
@@ -101,9 +111,15 @@ class ReportResponse(BaseModel):
 
 class PDFRequest(BaseModel):
     """Optional edited report text for PDF generation."""
+    edited_clinical_history: Optional[str] = None
+    edited_technique: Optional[str] = None
+    edited_comparison: Optional[str] = None
+    edited_image_quality: Optional[str] = None
     edited_findings: Optional[str] = None
     edited_impression: Optional[str] = None
+    edited_differential_diagnosis: Optional[str] = None
     edited_recommendations: Optional[str] = None
+    edited_critical_communication: Optional[str] = None
 
 
 class PatientSummaryRequest(BaseModel):

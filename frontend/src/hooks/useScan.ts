@@ -20,7 +20,7 @@ const STEP_LABELS: Record<AnalysisStep, string> = {
   idle: '',
   uploading: 'Securely uploading the study',
   classifying: 'Reviewing image patterns',
-  generating_heatmap: 'Mapping areas of attention',
+  generating_heatmap: 'Generating the Grad-CAM heatmap',
   generating_report: 'Preparing the clinical draft',
   complete: 'Study ready for review',
   error: 'Study processing failed',
@@ -40,6 +40,9 @@ export function useScanAnalysis() {
     setUploadResult(null);
     setAnalysisResult(null);
 
+    let heatmapTimer: ReturnType<typeof window.setTimeout> | undefined;
+    let reportTimer: ReturnType<typeof window.setTimeout> | undefined;
+
     try {
       // Step 1: Upload
       const upload = await uploadScan(file, scanType);
@@ -48,13 +51,10 @@ export function useScanAnalysis() {
 
       // Steps 2-4: Analyze (classification + heatmap + report all happen server-side)
       // We simulate granular steps with timing
-      const timer1 = setTimeout(() => setStep('generating_heatmap'), 1500);
-      const timer2 = setTimeout(() => setStep('generating_report'), 3000);
+      heatmapTimer = window.setTimeout(() => setStep('generating_heatmap'), 1500);
+      reportTimer = window.setTimeout(() => setStep('generating_report'), 3000);
 
       const analysis = await analyzeScan(upload.scan_id);
-
-      clearTimeout(timer1);
-      clearTimeout(timer2);
 
       setAnalysisResult(analysis);
       setStep('complete');
@@ -65,9 +65,15 @@ export function useScanAnalysis() {
       return analysis;
     } catch (err: any) {
       setStep('error');
-      const message = err.response?.data?.detail || 'Analysis failed. Please try again.';
+      const timedOut = err.code === 'ECONNABORTED' || err.code === 'ETIMEDOUT';
+      const message = err.response?.data?.detail || (timedOut
+        ? 'Image verification took too long. No analysis was performed. Upload one original diagnostic image and try again.'
+        : 'Analysis failed. Please try again.');
       setError(message);
       throw new Error(message);
+    } finally {
+      if (heatmapTimer !== undefined) window.clearTimeout(heatmapTimer);
+      if (reportTimer !== undefined) window.clearTimeout(reportTimer);
     }
   }, []);
 

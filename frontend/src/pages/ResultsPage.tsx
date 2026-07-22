@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { getReport } from '../api/client';
-import HistorySidebar from '../components/HistorySidebar';
 import PatientReport from '../components/PatientReport';
 import ReportEditor from '../components/ReportEditor';
 import ResultPanel from '../components/ResultPanel';
@@ -124,23 +123,20 @@ export default function ResultsPage() {
 
       {tab === 'doctor' ? (
         <div className="doctor-report-layout" role="tabpanel">
-          <div className="doctor-report-main">
+          <div className="result-grid">
             <ScanViewer
               scanImageUrl={`/static/uploads/${scanId}.png`}
               heatmapUrl={analysis.localization.heatmap_url}
               scanType={analysis.scan_type}
               heatmapTargetLabel={report.heatmap_target_label || analysis.classification.heatmap_target_label}
             />
-            <ReportEditor scanId={scanId} report={report} />
-          </div>
-          <div className="doctor-report-aside">
             <ResultPanel
               classification={analysis.classification}
               scanType={analysis.scan_type}
               analysisTimeMs={analysis.analysis_time_ms}
             />
-            <HistorySidebar currentScanId={scanId} />
           </div>
+          <ReportEditor scanId={scanId} report={report} onReportChange={setReport} />
         </div>
       ) : (
         <div role="tabpanel"><PatientReport scanId={scanId} /></div>

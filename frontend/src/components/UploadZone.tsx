@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { ScanType } from '../types';
 
 interface UploadZoneProps {
   onAnalyze: (file: File) => void;
   isLoading: boolean;
+  scanType: ScanType;
 }
 
 const formatSize = (bytes: number) => {
@@ -10,7 +12,7 @@ const formatSize = (bytes: number) => {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
-export default function UploadZone({ onAnalyze, isLoading }: UploadZoneProps) {
+export default function UploadZone({ onAnalyze, isLoading, scanType }: UploadZoneProps) {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -70,9 +72,10 @@ export default function UploadZone({ onAnalyze, isLoading }: UploadZoneProps) {
           <span className="upload-glyph" aria-hidden="true">
             <svg viewBox="0 0 32 32"><path d="M16 22V7m0 0-6 6m6-6 6 6M7 21v4h18v-4" /></svg>
           </span>
-          <h3>Place the scan here</h3>
+          <h3>{scanType === 'chest_xray' ? 'Upload one frontal chest X-ray' : 'Upload one brain MRI slice'}</h3>
           <p>Drag and drop, or <u>browse your files</u></p>
           <span className="file-formats">PNG · JPEG · DICOM &nbsp;/&nbsp; MAX 20 MB</span>
+          <span className="file-formats">Screenshots, posters, report pages and collages are rejected</span>
         </div>
       ) : (
         <div className="selected-file">

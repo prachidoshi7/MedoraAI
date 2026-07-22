@@ -1,63 +1,118 @@
 # MedoraAI
 
-MedoraAI is a local medical imaging demo platform for:
+MedoraAI is a full-stack medical-imaging decision-support application for chest radiographs and brain MRI images. It combines local image classifiers, Grad-CAM explainability, strict pre-inference scan validation, structured clinician reports, patient-friendly explanations, translation, history, and PDF export in one workflow.
 
-- Chest X-ray analysis with a fine-tuned EfficientNet-B4 15-class classifier
-- Brain MRI tumor detection with a MobileNetV2 classifier
-- Grad-CAM heatmap visualization
-- LLM-assisted clinical report generation with template fallback
-- PDF report download
+> **Clinical safety notice:** MedoraAI is an experimental decision-support project, not a certified medical device. Its output is preliminary and must be reviewed against the complete source examination by a qualified clinician. Do not use it as the sole basis for diagnosis or treatment.
 
-This project is a clinical decision-support demo only. It is not a certified medical device and must not be used for standalone diagnosis.
+## Features
 
-## Current Local Status
+- Chest X-ray multi-label classification with EfficientNet-B4 and 15 NIH ChestX-ray14-compatible labels
+- Four-class brain MRI classification with EfficientNetB3: Glioma, Meningioma, No Tumor, and Pituitary
+- Grad-CAM/Grad-CAM++ heatmaps generated from the diagnostic models
+- Local-first scan-type verification that rejects obvious screenshots, documents, mismatched anatomy, and unusable images before diagnostic inference
+- Independent vision-service fallback for ambiguous chest-versus-brain verification
+- Structured, editable clinician report with Technique, Comparison, Findings, Impression, Differential, Recommendations, and Communication
+- Grounding rules that prevent unsupported MRI sequence, contrast, enhancement, diffusion, comparison, and measurement claims
+- Patient-friendly explanations with Sarvam translation and an internal fallback path
+- Native ReportLab PDF generation that works on Windows without GTK/Pango
+- JWT authentication, scan history, thumbnails, and generated-report storage
+- Responsive React interface based on the Medora prototype design
 
-The repo is configured to load these model files:
+## Technology
+
+| Layer | Technology |
+| --- | --- |
+| Frontend | React 19, TypeScript, Vite, Axios |
+| API | FastAPI, Pydantic, SQLAlchemy, SQLite |
+| Chest model | PyTorch, timm, EfficientNet-B4 |
+| Brain model | TensorFlow/Keras, EfficientNetB3 |
+| Imaging | Pillow, OpenCV, pydicom |
+| Explainability | Grad-CAM and multi-scale Grad-CAM++ |
+| Reports | Image-aware language model with grounded template fallbacks |
+| Translation | Sarvam translation with bounded fallback |
+| PDF | ReportLab |
+
+## Repository Layout
+
+```text
+MedoraAI/
+├── backend/                 FastAPI application, classifiers and tests
+│   ├── routers/             Authentication, scan, report and history routes
+│   ├── services/            Models, validation, Grad-CAM, reports and PDF
+│   ├── templates/           Text/HTML report templates
+│   └── tests/               Validation, report and PDF regression tests
+├── frontend/                React and TypeScript user interface
+├── models/                  Local model artifacts and model instructions
+├── files/                   Training notebooks and supporting files
+├── docs/                    Plans, guides and project documentation
+├── tools/                   Evaluation and utility scripts
+├── .env.example             Safe environment-variable template
+└── docker-compose.yml       Local container deployment
+```
+
+## Required Model Files
+
+Place the current model artifacts in `models/`:
 
 ```text
 models/chest_xray_efficientnet_b4.pt
 models/chest_xray_efficientnet_b4.labels.json
-models/brain_tumor_mobilenetv2.h5
+models/best_brain_model.keras
 ```
 
-The local `.env` should contain:
-
-```env
-CHEST_MODEL_PATH=./models/chest_xray_efficientnet_b4.pt
-BRAIN_MODEL_PATH=./models/brain_tumor_mobilenetv2.h5
-```
-
-The chest model was trained against this backend constructor:
-
-```python
-timm.create_model("efficientnet_b4", pretrained=True, num_classes=15)
-```
+`best_brain_model.keras` is intentionally ignored because it is larger than GitHub's normal per-file limit. Copy it locally, store it in Git LFS, or attach it to a private release. The tracked `brain_tumor_mobilenetv2.h5` file is a legacy artifact and is not the current EfficientNetB3 model.
 
 ## Prerequisites
 
 - Python 3.11 recommended
-- Node.js 20.19+ recommended for Vite
+- Node.js 20.19+ or Node.js 22.12+
 - PowerShell on Windows
-- Docker Desktop only if running with Docker
+- Git and GitHub CLI for repository publishing
+- Optional: Docker Desktop
 
-## One-Time Setup
+## Local Setup
 
-From the repo root:
+Clone and enter the repository:
 
 ```powershell
-New-Item -ItemType Directory -Force data/uploads,data/heatmaps,data/thumbnails,models
-Copy-Item .env.example .env -ErrorAction SilentlyContinue
+git clone https://github.com/prachidoshi7/MedoraAI.git
+cd MedoraAI
 ```
 
-Install backend dependencies:
+Create your local environment file:
+
+```powershell
+Copy-Item .env.example .env
+notepad .env
+```
+
+At minimum, set a strong `SECRET_KEY`, the two model paths, and the API keys needed by your deployment:
+
+```env
+SECRET_KEY=replace-with-a-long-random-secret
+
+CHEST_MODEL_PATH=./models/chest_xray_efficientnet_b4.pt
+BRAIN_MODEL_PATH=./models/best_brain_model.keras
+
+GROQ_API_KEY=
+GEMINI_API_KEY=
+SARVAM_API_KEY=
+```
+
+High-confidence scan types are verified locally. With strict validation enabled, ambiguous images require at least one configured vision-service key. Never commit `.env`; it is ignored by Git.
+
+Install the backend:
 
 ```powershell
 cd backend
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
 pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu
 cd ..
 ```
 
-Install frontend dependencies:
+Install the frontend:
 
 ```powershell
 cd frontend
@@ -65,111 +120,71 @@ npm install
 cd ..
 ```
 
-If you have `medoraai_chest_xray_model_export.zip`, extract it from the repo root:
+## Run the Application
 
-```powershell
-Expand-Archive -LiteralPath .\medoraai_chest_xray_model_export.zip -DestinationPath . -Force
-```
-
-## Verify Setup
-
-Run from the repo root:
-
-```powershell
-python -m compileall backend
-```
-
-Check model files:
-
-```powershell
-python -c "from pathlib import Path; files=['models/chest_xray_efficientnet_b4.pt','models/chest_xray_efficientnet_b4.labels.json','models/brain_tumor_mobilenetv2.h5']; [print(f, Path(f).exists(), Path(f).stat().st_size if Path(f).exists() else 0) for f in files]"
-```
-
-Check frontend build:
-
-```powershell
-cd frontend
-npm run build
-cd ..
-```
-
-## Run Locally
-
-Start the backend in terminal 1:
+Backend terminal:
 
 ```powershell
 cd backend
-python -m uvicorn main:app --reload --port 8000
+.\.venv\Scripts\Activate.ps1
+python -m uvicorn main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-Start the frontend in terminal 2:
+Frontend terminal:
 
 ```powershell
 cd frontend
 npm run dev -- --host 127.0.0.1 --port 5173
 ```
 
-Open:
+Open `http://127.0.0.1:5173`.
+
+Default development login:
 
 ```text
-http://127.0.0.1:5173
+Username: demo
+Password: demo123
 ```
 
-Health check:
+Change the demo credentials before sharing or deploying the application.
 
-```text
-http://127.0.0.1:8000/health
+## Validation and Tests
+
+Run the backend regression suite:
+
+```powershell
+cd backend
+python -m unittest discover -s tests -v
 ```
 
-Expected health response includes:
+Build and lint the frontend:
 
-```json
-{
-  "status": "ok",
-  "models": {
-    "chest_xray": "loaded",
-    "brain_mri": "loaded"
-  }
-}
+```powershell
+cd frontend
+npm run build
+npm run lint
 ```
 
-Demo login:
-
-```text
-username: demo
-password: demo123
-```
+The regression suite covers strict scan-type rejection, local/provider fallback behavior, grounded report content, patient translation fallback, and professional multi-page PDF generation.
 
 ## Docker
+
+After creating `.env` and placing the model files in `models/`:
 
 ```powershell
 docker compose up --build
 ```
 
-Open:
+Open `http://localhost:3000`. The backend health endpoint is available at `http://localhost:8000/health`.
 
-```text
-http://localhost:3000
-```
+## Medical Data and Secrets
 
-The backend API is exposed at `http://localhost:8000`; the frontend container proxies `/api/*`, `/static/*`, and `/health` to the backend.
+- Do not commit API keys, `.env`, SQLite databases, uploaded scans, heatmaps, thumbnails, or patient-identifiable information.
+- Runtime data under `backend/data/` is ignored.
+- Use de-identified test images only.
+- Grad-CAM shows regions that influenced the model; it does not prove lesion localization.
+- A single uploaded image is not equivalent to a complete radiology examination.
 
-## Core Flow
+## Documentation
 
-1. Sign in with the demo account.
-2. Choose Chest X-Ray or Brain MRI.
-3. Upload a PNG, JPEG, or DICOM image.
-4. Run analysis.
-5. Review classification, severity, Grad-CAM heatmap, and report.
-6. Edit report text if needed and download the PDF.
-
-## Notes
-
-- Gemini is the preferred report provider because it receives the uploaded image plus ML context.
-- If no LLM API key is configured, report generation uses the built-in template fallback.
-- Vite may warn if Node.js is below 20.19.0. Upgrade Node to remove that warning.
-- Do not commit real API keys from `.env`.
-
-More setup detail is in `docs/guides/setup.md`.
-
-For prediction quality checks, run `tools/evaluate_chest_model.py` and see `docs/guides/model-evaluation.md`.
+Additional setup, design, evaluation and project-planning documents are available under [`docs/`](docs/).

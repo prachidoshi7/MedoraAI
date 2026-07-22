@@ -7,14 +7,14 @@ Expected files:
 ```text
 chest_xray_efficientnet_b4.pt
 chest_xray_efficientnet_b4.labels.json
-brain_tumor_mobilenetv2.h5
+best_brain_model.keras
 ```
 
 `.env` should point to them from the repo root:
 
 ```env
 CHEST_MODEL_PATH=./models/chest_xray_efficientnet_b4.pt
-BRAIN_MODEL_PATH=./models/brain_tumor_mobilenetv2.h5
+BRAIN_MODEL_PATH=./models/best_brain_model.keras
 ```
 
 ## Chest X-Ray Model
@@ -28,9 +28,12 @@ The label order must match `backend/services/chest_classifier.py`.
 
 ## Brain MRI Model
 
-- Architecture: MobileNetV2
-- Weight format: Keras `.h5`
+- Architecture: EfficientNetB3, four classes
+- Classes: Glioma, Meningioma, No Tumor, Pituitary
+- Weight format: Keras `.keras`
 - Loaded by `backend/services/brain_classifier.py`
+
+`best_brain_model.keras` is ignored because it exceeds GitHub's normal file-size limit. Supply it locally, use Git LFS, or distribute it through a private release. `brain_tumor_mobilenetv2.h5` is retained only as a legacy artifact.
 
 ## Importing A Chest Export Zip
 

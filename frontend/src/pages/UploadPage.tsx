@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import HistorySidebar from '../components/HistorySidebar';
 import LoadingSpinner from '../components/LoadingSpinner';
 import UploadZone from '../components/UploadZone';
 import { useScanAnalysis } from '../hooks/useScan';
@@ -35,23 +34,21 @@ export default function UploadPage() {
     <div className="workspace-page upload-page">
       {isLoading && <LoadingSpinner step={step} stepLabel={stepLabel} />}
 
-      <header className="page-hero upload-hero">
+      <header className="topbar upload-hero">
         <div>
-          <p className="eyebrow">New diagnostic study · 01</p>
-          <h1>From image to<br /><em>review-ready report.</em></h1>
+          <p className="eyebrow">Diagnostic console</p>
+          <h1>New diagnostic study</h1>
+          <p>Choose a modality and upload a medical image to begin analysis.</p>
         </div>
-        <p className="hero-deck">
-          Upload a chest X-ray or brain MRI. Medora organizes the key finding,
-          visual attention map, editable clinical draft, and a patient-friendly explanation.
-        </p>
+        <div className="env-badge"><i /> Inference engine connected</div>
       </header>
 
-      <div className="dashboard-grid">
-        <section className="workflow-panel">
+      <div className="upload-workspace">
+        <section className="workflow-panel fade-stage">
           <div className="workflow-step">
             <div className="step-heading">
               <span>01</span>
-              <div><p className="eyebrow">Study type</p><h2>What are you reviewing?</h2></div>
+              <div><p className="eyebrow">Study type</p><h2>What are you reviewing?</h2><small>Select the model that matches this study.</small></div>
             </div>
             <div className="scan-type-grid" role="radiogroup" aria-label="Study type">
               {SCAN_TYPES.map((type) => {
@@ -86,29 +83,14 @@ export default function UploadPage() {
                 <h2>{scanType ? 'Add the scan.' : 'Choose a study type first.'}</h2>
               </div>
             </div>
-            {scanType && <UploadZone onAnalyze={handleAnalyze} isLoading={isLoading} />}
+            {scanType && <UploadZone onAnalyze={handleAnalyze} isLoading={isLoading} scanType={scanType} />}
           </div>
 
           {error && <div className="form-error workflow-error" role="alert">{error}</div>}
-        </section>
-
-        <aside className="dashboard-aside">
-          <div className="service-note">
-            <span className="service-note__number">03</span>
-            <p className="eyebrow">Designed to save time</p>
-            <h2>One review.<br />Two clear reports.</h2>
-            <p>
-              Keep the clinical detail for the care team, then translate the same finding
-              into simple language a patient can understand.
-            </p>
-            <dl>
-              <div><dt>02</dt><dd>Imaging modalities</dd></div>
-              <div><dt>11</dt><dd>Patient languages</dd></div>
-              <div><dt>01</dt><dd>Editable clinical draft</dd></div>
-            </dl>
+          <div className="workflow-footnote">
+            <span>◎ Explainable AI</span><span>⌁ Editable report</span><span>◈ Patient summary</span>
           </div>
-          <HistorySidebar />
-        </aside>
+        </section>
       </div>
     </div>
   );

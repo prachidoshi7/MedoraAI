@@ -7,10 +7,10 @@ interface ScanViewerProps {
   heatmapTargetLabel?: string;
 }
 
-type ViewMode = 'original' | 'attention' | 'compare';
+type ViewMode = 'original' | 'heatmap' | 'compare';
 
 export default function ScanViewer({ scanImageUrl, heatmapUrl, scanType, heatmapTargetLabel }: ScanViewerProps) {
-  const [viewMode, setViewMode] = useState<ViewMode>('attention');
+  const [viewMode, setViewMode] = useState<ViewMode>('heatmap');
   const scanLabel = scanType === 'brain_mri' ? 'Brain MRI' : 'Chest X-ray';
 
   return (
@@ -21,9 +21,9 @@ export default function ScanViewer({ scanImageUrl, heatmapUrl, scanType, heatmap
           <h2>{scanLabel}</h2>
         </div>
         <div className="viewer-toggle" role="group" aria-label="Image display mode">
-          {(['original', 'attention', 'compare'] as ViewMode[]).map((mode) => (
+          {(['original', 'heatmap', 'compare'] as ViewMode[]).map((mode) => (
             <button key={mode} className={viewMode === mode ? 'active' : ''} onClick={() => setViewMode(mode)}>
-              {mode === 'attention' ? 'Attention map' : mode[0].toUpperCase() + mode.slice(1)}
+              {mode === 'heatmap' ? 'Grad-CAM heatmap' : mode[0].toUpperCase() + mode.slice(1)}
             </button>
           ))}
         </div>
@@ -33,13 +33,13 @@ export default function ScanViewer({ scanImageUrl, heatmapUrl, scanType, heatmap
         {viewMode === 'compare' ? (
           <>
             <figure><img src={scanImageUrl} alt={`Original ${scanLabel}`} /><figcaption>Original</figcaption></figure>
-            <figure><img src={heatmapUrl} alt={`${scanLabel} attention map`} /><figcaption>Model attention</figcaption></figure>
+            <figure><img src={heatmapUrl} alt={`${scanLabel} Grad-CAM heatmap`} /><figcaption>Grad-CAM heatmap</figcaption></figure>
           </>
         ) : (
           <figure>
             <img
               src={viewMode === 'original' ? scanImageUrl : heatmapUrl}
-              alt={viewMode === 'original' ? `Original ${scanLabel}` : `${scanLabel} attention map`}
+              alt={viewMode === 'original' ? `Original ${scanLabel}` : `${scanLabel} Grad-CAM heatmap`}
             />
           </figure>
         )}
@@ -50,7 +50,7 @@ export default function ScanViewer({ scanImageUrl, heatmapUrl, scanType, heatmap
       <footer className="scan-viewer__footer">
         <span><i className="status-pulse" />Study loaded</span>
         {viewMode !== 'original' && (
-          <span>Attention target · {heatmapTargetLabel || 'primary finding'}</span>
+          <span>Grad-CAM target · {heatmapTargetLabel || 'primary finding'}</span>
         )}
         <span>For clinician review</span>
       </footer>

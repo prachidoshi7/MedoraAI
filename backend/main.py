@@ -75,18 +75,31 @@ async def lifespan(app: FastAPI):
     app.state.brain_gradcam = BrainGradCAM(brain_classifier)
     logger.info("  ✅ Grad-CAM engines initialized.")
 
-    # 6. Initialize LLM Report Engine
+    # 6. Initialize the independent, fail-closed scan type gate.
+    from services.scan_type_verifier import ScanTypeVerifier
+    app.state.scan_type_verifier = ScanTypeVerifier(
+        api_key=settings.GEMINI_API_KEY,
+        model=settings.SCAN_TYPE_VERIFIER_MODEL or settings.GEMINI_MODEL,
+        min_confidence=settings.SCAN_TYPE_MIN_CONFIDENCE,
+        groq_api_key=settings.GROQ_API_KEY,
+        groq_model=settings.SCAN_TYPE_GROQ_MODEL,
+    )
+    logger.info("  ✅ Strict pre-inference scan type verification ready.")
+
+    # 7. Initialize LLM Report Engine
     from services.llm_report_engine import LLMReportEngine
     app.state.report_engine = LLMReportEngine(
         gemini_api_key=settings.GEMINI_API_KEY,
         gemini_model=settings.GEMINI_MODEL,
+        sarvam_api_key=settings.SARVAM_API_KEY,
+        sarvam_translate_model=settings.SARVAM_TRANSLATE_MODEL,
         groq_api_key=settings.GROQ_API_KEY,
         anthropic_api_key=settings.ANTHROPIC_API_KEY,
         openai_api_key=settings.OPENAI_API_KEY,
     )
-    logger.info(f"  ✅ LLM Report Engine ready (provider: {settings.get_llm_provider_name()}).")
+    logger.info("  ✅ Clinical report and patient-language services ready.")
 
-    # 7. Initialize PDF Generator
+    # 8. Initialize PDF Generator
     from services.pdf_generator import PDFGenerator
     app.state.pdf_generator = PDFGenerator()
     logger.info("  ✅ PDF Generator ready.")

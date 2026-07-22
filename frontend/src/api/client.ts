@@ -50,6 +50,7 @@ export async function uploadScan(file: File, scanType: ScanType): Promise<Upload
 
   const res = await api.post<UploadResponse>('/scan/upload', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 25000,
   });
   return res.data;
 }
@@ -64,6 +65,13 @@ export async function analyzeScan(scanId: string): Promise<AnalysisResponse> {
 // ---- Report ----
 export async function getReport(scanId: string): Promise<ReportResponse> {
   const res = await api.get<ReportResponse>(`/report/${scanId}`);
+  return res.data;
+}
+
+export async function regenerateReport(scanId: string): Promise<ReportResponse> {
+  const res = await api.post<ReportResponse>(`/report/${scanId}/regenerate`, undefined, {
+    timeout: 180000,
+  });
   return res.data;
 }
 
@@ -96,7 +104,7 @@ export async function getPatientSummary(
   const res = await api.post<PatientSummaryResponse>(
     `/report/${scanId}/patient-summary`,
     { language },
-    { timeout: 45000 },
+    { timeout: 60000 },
   );
   return res.data;
 }

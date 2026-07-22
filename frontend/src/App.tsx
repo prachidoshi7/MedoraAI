@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
+import HistorySidebar from './components/HistorySidebar';
 import LoginPage from './pages/LoginPage';
 import ResultsPage from './pages/ResultsPage';
 import UploadPage from './pages/UploadPage';
@@ -11,12 +12,9 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 
 function Brand() {
   return (
-    <span className="brand-lockup" aria-label="Medora Clinical Imaging">
-      <span className="brand-mark" aria-hidden="true"><i /><i /></span>
-      <span>
-        <strong>Medora</strong>
-        <small>Clinical imaging</small>
-      </span>
+    <span className="brand-lockup" aria-label="Medora AI Clinical Imaging">
+      <span className="brand-mark" aria-hidden="true" />
+      <span><strong>Medora</strong><small>AI clinical imaging</small></span>
     </span>
   );
 }
@@ -34,23 +32,26 @@ function Navigation() {
   };
 
   return (
-    <header className="site-header">
+    <aside className="site-sidebar">
       <button className="brand-button" onClick={() => navigate('/upload')}><Brand /></button>
-      <nav className="site-nav" aria-label="Primary navigation">
-        <button
-          className={location.pathname === '/upload' ? 'active' : ''}
-          onClick={() => navigate('/upload')}
-        >
-          New study
-        </button>
-        <span className="nav-divider" />
-        <span className="doctor-identity">
+      <button
+        className={`new-study-button${location.pathname === '/upload' ? ' active' : ''}`}
+        onClick={() => navigate('/upload')}
+      >
+        <span aria-hidden="true">＋</span> New scan
+      </button>
+
+      <div className="sidebar-history"><HistorySidebar /></div>
+
+      <footer className="sidebar-footer">
+        <div className="engine-status"><i /> Inference engine connected</div>
+        <div className="doctor-identity">
           <span className="doctor-avatar">{username?.slice(0, 1).toUpperCase() || 'D'}</span>
           <span><small>Signed in as</small>Dr. {username || 'Doctor'}</span>
-        </span>
+        </div>
         <button className="nav-signout" onClick={leave}>Sign out</button>
-      </nav>
-    </header>
+      </footer>
+    </aside>
   );
 }
 
@@ -58,7 +59,7 @@ function ApplicationFrame() {
   const { isAuthenticated } = useAuth();
 
   return (
-    <>
+    <div className={isAuthenticated ? 'app-shell' : 'auth-shell'}>
       <Navigation />
       <main className={isAuthenticated ? 'page-content' : 'page-content page-content--auth'}>
         <Routes>
@@ -68,7 +69,7 @@ function ApplicationFrame() {
           <Route path="*" element={<Navigate to="/upload" replace />} />
         </Routes>
       </main>
-    </>
+    </div>
   );
 }
 

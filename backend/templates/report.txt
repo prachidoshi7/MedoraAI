@@ -13,7 +13,18 @@ AI ANALYSIS
 Primary Finding: {{ top_label }}
 Confidence: {{ "%.1f"|format(confidence * 100) }}%
 Severity: {{ severity }}
-Report Source: {{ llm_provider }}
+
+CLINICAL HISTORY
+{{ clinical_history }}
+
+TECHNIQUE
+{{ technique }}
+
+COMPARISON
+{{ comparison }}
+
+IMAGE QUALITY / LIMITATIONS
+{{ image_quality }}
 
 FINDINGS
 {{ findings }}
@@ -21,8 +32,14 @@ FINDINGS
 IMPRESSION
 {{ impression }}
 
+DIFFERENTIAL DIAGNOSIS
+{{ differential_diagnosis }}
+
 RECOMMENDATIONS
 {{ recommendations }}
+
+CRITICAL COMMUNICATION
+{{ critical_communication }}
 
 DISCLAIMER
 {{ disclaimer }}

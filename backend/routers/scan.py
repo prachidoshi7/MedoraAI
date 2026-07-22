@@ -21,6 +21,7 @@ from db.database import get_db
 from db import crud
 from models.schemas import UploadResponse, AnalysisResponse, ClassificationDetail, LocalizationDetail, BoundingBox
 from routers.auth import get_current_user
+from services.scan_type_verifier import ScanTypeVerification
 
 logger = logging.getLogger(__name__)
 
@@ -152,11 +153,12 @@ def _has_chest_xray_lung_pattern(gray: np.ndarray) -> bool:
 
 def _validate_scan_matches_selected_type(image: Image.Image, scan_type: str, modality: str) -> None:
     """
-    Reject obvious scan-type mismatches before model inference.
+    Validate basic image quality and authoritative DICOM modality metadata.
 
-    This is a lightweight guardrail. It prevents the chest classifier from
-    producing confident-looking labels for arbitrary color/non-radiograph
-    images, but it is not a substitute for a trained out-of-distribution model.
+    Anatomy/modality verification for PNG/JPEG and body-part verification for
+    DICOM are handled by the independent verifier after this cheap local gate.
+    Fixed-region heuristics remain diagnostic-only because they reject valid
+    projections and accept some wrong-modality images.
     """
     width, height = image.size
     if min(width, height) < 128:
@@ -167,129 +169,91 @@ def _validate_scan_matches_selected_type(image: Image.Image, scan_type: str, mod
 
     modality_upper = (modality or "").upper()
 
-    if scan_type == "chest_xray":
-        if modality_upper in {"MR", "MRI", "CT", "US", "NM", "PT"}:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Selected Chest X-Ray, but uploaded DICOM modality is {modality}. Select the correct scan type.",
-            )
-
-        arr = np.asarray(image.resize((224, 224)).convert("RGB"), dtype=np.float32) / 255.0
-        channel_delta = float(
-            np.mean(
-                np.abs(arr[:, :, 0] - arr[:, :, 1])
-                + np.abs(arr[:, :, 1] - arr[:, :, 2])
-                + np.abs(arr[:, :, 0] - arr[:, :, 2])
-            )
-            / 3.0
+    # DICOM modality tags are authoritative. Values synthesized from the
+    # selected type for PNG/JPEG files naturally agree with this branch.
+    if scan_type == "chest_xray" and modality_upper in {"MR", "MRI", "CT", "US", "NM", "PT"}:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Selected Chest X-Ray, but uploaded DICOM modality is {modality}. Select the correct scan type.",
         )
-        gray_rgb = arr.mean(axis=2)
-        contrast = float(gray_rgb.std())
-        dynamic_range = float(np.quantile(gray_rgb, 0.95) - np.quantile(gray_rgb, 0.05))
-
-        if channel_delta > 0.08:
-            _reject_bad_scan(
-                "This does not look like a grayscale chest X-ray. "
-                "Upload a chest radiograph, or choose the correct scan type."
-            )
-
-        if contrast < 0.035 or dynamic_range < 0.12:
-            _reject_bad_scan(
-                "This image does not have enough radiograph-like contrast for chest X-ray analysis. "
-                "Upload a valid chest X-ray image."
-            )
-
-        gray = _normalized_grayscale(image)
-        if _looks_like_centered_brain_slice(gray):
-            _reject_bad_scan(
-                "This image looks more like a centered brain/MRI slice than a chest X-ray. "
-                "Choose Brain MRI or upload a valid chest radiograph."
-            )
-
-        if not _has_chest_xray_lung_pattern(gray):
-            _reject_bad_scan(
-                "This image does not show the expected paired lung-field pattern of a chest X-ray. "
-                "Upload a valid frontal chest radiograph."
-            )
-
-    elif scan_type == "brain_mri":
-        # DICOM modality mismatch
-        if modality_upper in {"CR", "DX", "DR", "XR", "RG"}:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Selected Brain MRI, but uploaded DICOM modality is {modality}. Select Chest X-Ray instead.",
-            )
-
-        # --- Image-level validation for brain MRI ---
-        # The EfficientNetB3 classifier only knows 4 classes and MUST pick one,
-        # so it will confidently misclassify billboards, selfies, etc. as tumors.
-        # These checks catch obvious non-MRI images before they reach the model.
-
-        arr = np.asarray(image.resize((256, 256)).convert("RGB"), dtype=np.float32) / 255.0
-
-        # 1. Reject color photos — brain MRIs are grayscale
-        channel_delta = float(
-            np.mean(
-                np.abs(arr[:, :, 0] - arr[:, :, 1])
-                + np.abs(arr[:, :, 1] - arr[:, :, 2])
-                + np.abs(arr[:, :, 0] - arr[:, :, 2])
-            )
-            / 3.0
+    if scan_type == "brain_mri" and modality_upper in {"CR", "DX", "DR", "XR", "RG"}:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Selected Brain MRI, but uploaded DICOM modality is {modality}. Select Chest X-Ray instead.",
         )
-        if channel_delta > 0.08:
-            _reject_bad_scan(
-                "This does not look like a medical brain MRI scan. "
-                "Brain MRI images are grayscale. Please upload a valid brain MRI image."
-            )
 
-        # 2. Reject images with too little contrast (blank/flat images)
-        gray_rgb = arr.mean(axis=2)
-        contrast = float(gray_rgb.std())
-        dynamic_range = float(np.quantile(gray_rgb, 0.95) - np.quantile(gray_rgb, 0.05))
+    arr = np.asarray(image.resize((256, 256)).convert("RGB"), dtype=np.float32) / 255.0
+    channel_delta = float(
+        np.mean(
+            np.abs(arr[:, :, 0] - arr[:, :, 1])
+            + np.abs(arr[:, :, 1] - arr[:, :, 2])
+            + np.abs(arr[:, :, 0] - arr[:, :, 2])
+        )
+        / 3.0
+    )
+    gray_rgb = arr.mean(axis=2)
+    contrast = float(gray_rgb.std())
+    dynamic_range = float(np.quantile(gray_rgb, 0.95) - np.quantile(gray_rgb, 0.05))
 
-        if contrast < 0.03 or dynamic_range < 0.10:
-            _reject_bad_scan(
-                "This image does not have enough contrast for brain MRI analysis. "
-                "Please upload a valid brain MRI scan."
-            )
+    # Reject only inputs that are clearly unusable by either grayscale model.
+    # The relaxed colour threshold tolerates scanner overlays and compression.
+    if channel_delta > 0.14:
+        _reject_bad_scan(
+            "This does not look like a grayscale medical image. "
+            "Upload the original chest X-ray or brain MRI image."
+        )
+    if contrast < 0.02 or dynamic_range < 0.07:
+        _reject_bad_scan(
+            "This image does not have enough contrast for reliable analysis. "
+            "Upload the original diagnostic image rather than a blank or heavily compressed preview."
+        )
 
-        # 3. Check for brain-like structure: centered bright region on dark background
-        gray = _normalized_grayscale(image)
+    # These signals are useful for observability, but are not reliable enough
+    # to reject a selected modality without a trained OOD/modality classifier.
+    gray = _normalized_grayscale(image)
+    logger.debug(
+        "Upload anatomy signals for selected %s: brain_like=%s chest_like=%s",
+        scan_type,
+        _looks_like_centered_brain_slice(gray),
+        _has_chest_xray_lung_pattern(gray),
+    )
 
-        # Check if it looks like a chest X-ray instead of brain MRI
-        if _has_chest_xray_lung_pattern(gray):
-            _reject_bad_scan(
-                "This image looks like a chest X-ray, not a brain MRI. "
-                "Please select 'Chest X-Ray' scan type or upload a brain MRI image."
-            )
 
-        # Check for brain MRI characteristics:
-        # - Dark borders (black background typical of MRI)
-        # - A centered bright structure (the brain)
-        # - Not too uniform (has internal structure)
-        border = np.concatenate([
-            gray[:20, :].ravel(), gray[-20:, :].ravel(),
-            gray[:, :20].ravel(), gray[:, -20:].ravel(),
-        ])
-        border_mean = float(border.mean())
-        center_region = gray[60:200, 60:200]
-        center_mean = float(center_region.mean())
-        center_std = float(center_region.std())
-
-        # Brain MRIs have dark edges (black background) and a brighter center (brain)
-        has_dark_background = border_mean < 0.25
-        has_bright_center = center_mean > border_mean + 0.08
-        has_internal_structure = center_std > 0.06
-
-        # If none of the brain-like characteristics match, reject
-        if not (has_dark_background and has_bright_center and has_internal_structure):
-            # Try the more specific centered-brain-slice detector as a second chance
-            if not _looks_like_centered_brain_slice(gray):
-                _reject_bad_scan(
-                    "This image does not appear to be a brain MRI scan. "
-                    "Brain MRI images typically show a bright brain structure on a dark background. "
-                    "Please upload a valid axial, sagittal, or coronal brain MRI image."
-                )
+def _enforce_scan_type_verification(
+    verification: ScanTypeVerification,
+    selected_scan_type: str,
+    min_confidence: float,
+) -> None:
+    """Reject anything except a confident, single-image exact type match."""
+    selected = "Brain MRI" if selected_scan_type == "brain_mri" else "Chest X-Ray"
+    required = (
+        "one original brain MRI slice showing intracranial anatomy"
+        if selected_scan_type == "brain_mri"
+        else "one original frontal chest X-ray showing the full thorax and both lungs"
+    )
+    if not verification.is_single_diagnostic_image:
+        _reject_bad_scan(
+            f"This is not an acceptable {selected} image. Upload {required}. "
+            "Screenshots, posters, collages, report pages, and images dominated by text or interface elements are rejected."
+        )
+    if not verification.anatomy_complete_enough:
+        _reject_bad_scan(
+            f"This {selected} image is too cropped, obscured, or low quality. Upload {required}."
+        )
+    if verification.category == "other":
+        _reject_bad_scan(
+            f"This is not a valid {selected} image. Upload {required}; no analysis was performed."
+        )
+    if verification.category == "uncertain" or verification.confidence < min_confidence:
+        _reject_bad_scan(
+            f"We could not verify this as a valid {selected} image. Upload {required}; no analysis was performed."
+        )
+    if verification.category != selected_scan_type:
+        detected = "brain MRI" if verification.category == "brain_mri" else "chest X-ray"
+        _reject_bad_scan(
+            f"The uploaded image appears to be a {detected}, but {selected} is selected. "
+            "Choose the matching scan type before continuing."
+        )
 
 
 # ============================================================
@@ -358,6 +322,30 @@ async def upload_scan(
         )
 
     _validate_scan_matches_selected_type(image, scan_type, modality)
+
+    if settings.STRICT_SCAN_TYPE_VALIDATION:
+        verifier = getattr(request.app.state, "scan_type_verifier", None)
+        if verifier is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Scan type verification is unavailable. No analysis was performed.",
+            )
+        try:
+            verification = await verifier.verify(image)
+        except Exception as exc:
+            logger.error("Scan type verification unavailable: %s", exc)
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=(
+                    "Image-type verification services are temporarily busy. No analysis was performed. "
+                    "Please retry this same diagnostic image in a moment."
+                ),
+            )
+        _enforce_scan_type_verification(
+            verification,
+            scan_type,
+            settings.SCAN_TYPE_MIN_CONFIDENCE,
+        )
 
     # Save original image as PNG
     file_path = os.path.join(settings.uploads_dir, f"{scan_id}.png")
@@ -476,7 +464,7 @@ async def analyze_scan(
         )
 
         # Store report in DB
-        crud.create_report(
+        crud.replace_report(
             db=db,
             scan_id=scan_id,
             report_data=report_data,

@@ -5,6 +5,7 @@ Database create/read/update operations for all models.
 
 import json
 from sqlalchemy.orm import Session
+from sqlalchemy.sql import func
 from .models import User, Scan, Result, Report
 
 
@@ -140,6 +141,28 @@ def create_report(
         report_json=json.dumps(report_data),
     )
     db.add(report)
+    db.commit()
+    db.refresh(report)
+    return report
+
+
+def replace_report(
+    db: Session,
+    scan_id: str,
+    report_data: dict,
+    llm_provider: str = "template",
+    patient_id: str = "DEMO-001",
+) -> Report:
+    """Create or replace a generated report while preserving the scan record."""
+    report = get_report_by_scan(db, scan_id)
+    if report is None:
+        return create_report(db, scan_id, report_data, llm_provider, patient_id)
+    report.patient_id = patient_id or report.patient_id
+    report.llm_provider = llm_provider
+    report.report_json = json.dumps(report_data)
+    report.edited_findings = None
+    report.edited_impression = None
+    report.generated_at = func.now()
     db.commit()
     db.refresh(report)
     return report

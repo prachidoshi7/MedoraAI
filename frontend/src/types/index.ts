@@ -87,13 +87,22 @@ export interface ReportData {
   top_label: string;
   confidence: number;
   all_scores: Record<string, number>;
+  clinical_history: string;
+  technique: string;
+  comparison: string;
+  image_quality: string;
   findings: string;
   impression: string;
+  differential_diagnosis: string;
   recommendations: string;
+  critical_communication: string;
   severity: string;
   disclaimer: string;
   generated_at: string;
   heatmap_target_label?: string;
+  is_low_confidence?: boolean;
+  methodology?: string;
+  limitations?: string;
 }
 
 export interface ReportResponse {
@@ -102,9 +111,15 @@ export interface ReportResponse {
 }
 
 export interface PDFRequest {
+  edited_clinical_history?: string;
+  edited_technique?: string;
+  edited_comparison?: string;
+  edited_image_quality?: string;
   edited_findings?: string;
   edited_impression?: string;
+  edited_differential_diagnosis?: string;
   edited_recommendations?: string;
+  edited_critical_communication?: string;
 }
 
 /* ── Patient Summary ── */
