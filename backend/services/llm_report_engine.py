@@ -12,6 +12,8 @@ import io
 import json
 import logging
 import re
+import threading
+import time
 from datetime import datetime
 from typing import Optional
 
@@ -106,6 +108,8 @@ class LLMReportEngine:
         self.groq_key = groq_api_key
         self.anthropic_key = anthropic_api_key
         self.openai_key = openai_api_key
+        self._gemini_http_client = None
+        self._gemini_client_lock = threading.Lock()
 
         providers = []
         if self.gemini_key:
@@ -124,6 +128,28 @@ class LLMReportEngine:
             ", ".join(providers),
             "configured" if self.sarvam_key else "local fallback",
         )
+
+    def _get_gemini_http_client(self):
+        """Return a reusable client so DNS/TLS setup is not repeated per report."""
+        if self._gemini_http_client is None:
+            with self._gemini_client_lock:
+                if self._gemini_http_client is None:
+                    import httpx
+
+                    self._gemini_http_client = httpx.Client(
+                        limits=httpx.Limits(
+                            max_connections=5,
+                            max_keepalive_connections=2,
+                            keepalive_expiry=60.0,
+                        )
+                    )
+        return self._gemini_http_client
+
+    def close(self) -> None:
+        """Release reusable network resources during application shutdown."""
+        if self._gemini_http_client is not None:
+            self._gemini_http_client.close()
+            self._gemini_http_client = None
 
     def _build_user_prompt(self, result, scan_type: str) -> str:
         """Build the clinical context prompt from model output."""
@@ -220,6 +246,7 @@ Generate a structured diagnostic report."""
         Returns:
             Complete report dictionary with all fields
         """
+        report_started = time.perf_counter()
         user_prompt = self._build_user_prompt(result, scan_type)
         llm_report = None
         llm_provider = "template"
@@ -288,8 +315,8 @@ Generate a structured diagnostic report."""
                 "for 4-class brain tumor classification (Glioma, Meningioma, No Tumor, Pituitary). "
                 "Input images undergo brain contour cropping and are processed at 260×260 resolution. "
                 "Test-Time Augmentation (TTA) is applied at inference for improved accuracy. "
-                "Explainability was generated using multi-scale Grad-CAM++ targeting "
-                "top_activation (9×9) and block6a_expand_activation (17×17) layers. "
+                "Explainability was generated using class-logit Grad-CAM++ targeting "
+                "the top_activation layer (9×9). "
                 "The heatmap represents actual gradient-weighted activations from the trained model."
             )
         else:
@@ -306,7 +333,7 @@ Generate a structured diagnostic report."""
             "(5) Image quality, positioning, and artifacts may affect model performance."
         )
 
-        return {
+        report_payload = {
             "patient_id": patient_id,
             "scan_date": now.strftime("%Y-%m-%d"),
             "scan_type": scan_type,
@@ -334,6 +361,12 @@ Generate a structured diagnostic report."""
             "methodology": methodology,
             "limitations": limitations,
         }
+        logger.info(
+            "Clinical report generated via %s in %.0fms",
+            llm_provider,
+            (time.perf_counter() - report_started) * 1000,
+        )
+        return report_payload
 
     async def _call_gemini(self, user_prompt: str, image) -> Optional[dict]:
         """Call Gemini with inline image data for image-aware report generation."""
@@ -401,7 +434,7 @@ ADDITIONAL SAFETY REQUIREMENTS:
                             "maxOutputTokens": 2048,
                         },
                     }
-                    response = httpx.post(
+                    response = self._get_gemini_http_client().post(
                         url,
                         headers={
                             "x-goog-api-key": self.gemini_key,

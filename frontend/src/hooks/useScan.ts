@@ -12,7 +12,6 @@ export type AnalysisStep =
   | 'uploading'
   | 'classifying'
   | 'generating_heatmap'
-  | 'generating_report'
   | 'complete'
   | 'error';
 
@@ -21,7 +20,6 @@ const STEP_LABELS: Record<AnalysisStep, string> = {
   uploading: 'Securely uploading the study',
   classifying: 'Reviewing image patterns',
   generating_heatmap: 'Generating the Grad-CAM heatmap',
-  generating_report: 'Preparing the clinical draft',
   complete: 'Study ready for review',
   error: 'Study processing failed',
 };
@@ -41,7 +39,6 @@ export function useScanAnalysis() {
     setAnalysisResult(null);
 
     let heatmapTimer: ReturnType<typeof window.setTimeout> | undefined;
-    let reportTimer: ReturnType<typeof window.setTimeout> | undefined;
 
     try {
       // Step 1: Upload
@@ -49,10 +46,9 @@ export function useScanAnalysis() {
       setUploadResult(upload);
       setStep('classifying');
 
-      // Steps 2-4: Analyze (classification + heatmap + report all happen server-side)
-      // We simulate granular steps with timing
+      // The analysis endpoint returns as soon as classification and localization
+      // are ready. The results page separately waits for the clinical draft.
       heatmapTimer = window.setTimeout(() => setStep('generating_heatmap'), 1500);
-      reportTimer = window.setTimeout(() => setStep('generating_report'), 3000);
 
       const analysis = await analyzeScan(upload.scan_id);
 
@@ -73,7 +69,6 @@ export function useScanAnalysis() {
       throw new Error(message);
     } finally {
       if (heatmapTimer !== undefined) window.clearTimeout(heatmapTimer);
-      if (reportTimer !== undefined) window.clearTimeout(reportTimer);
     }
   }, []);
 

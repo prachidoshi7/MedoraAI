@@ -9,6 +9,13 @@ import type { AnalysisResponse, ReportData } from '../types';
 
 type ReportTab = 'doctor' | 'patient';
 
+const REPORT_POLL_INTERVAL_MS = 1000;
+const REPORT_POLL_TIMEOUT_MS = 90000;
+
+function wait(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
 export default function ResultsPage() {
   const { scanId } = useParams<{ scanId: string }>();
   const navigate = useNavigate();
@@ -20,52 +27,107 @@ export default function ResultsPage() {
 
   useEffect(() => {
     if (!scanId) return;
+    let cancelled = false;
+
     setLoading(true);
     setError('');
     setTab('doctor');
 
-    getReport(scanId)
-      .then(({ report: nextReport }) => {
-        setReport(nextReport);
-        const stored = sessionStorage.getItem(`analysis_${scanId}`);
-        if (stored) {
+    const stored = sessionStorage.getItem(`analysis_${scanId}`);
+    let storedAnalysis: AnalysisResponse | null = null;
+    if (stored) {
+      try {
+        storedAnalysis = JSON.parse(stored) as AnalysisResponse;
+        setAnalysis(storedAnalysis);
+      } catch {
+        sessionStorage.removeItem(`analysis_${scanId}`);
+      }
+    }
+
+    const loadReport = async () => {
+      const deadline = Date.now() + REPORT_POLL_TIMEOUT_MS;
+
+      try {
+        while (!cancelled) {
           try {
-            setAnalysis(JSON.parse(stored) as AnalysisResponse);
+            const { report: nextReport } = await getReport(scanId);
+            if (cancelled) return;
+
+            setReport(nextReport);
+            if (!storedAnalysis) {
+              setAnalysis({
+                scan_id: scanId,
+                scan_type: nextReport.scan_type as AnalysisResponse['scan_type'],
+                status: 'analyzed',
+                classification: {
+                  top_label: nextReport.top_label || 'Unknown',
+                  confidence: nextReport.confidence || 0,
+                  severity: nextReport.severity as AnalysisResponse['classification']['severity'],
+                  all_scores: nextReport.all_scores || {},
+                },
+                localization: {
+                  type: 'heatmap',
+                  heatmap_url: `/static/heatmaps/${scanId}.png`,
+                  bounding_boxes: [],
+                },
+                analysis_time_ms: 0,
+                analyzed_at: nextReport.generated_at,
+              });
+            }
             return;
-          } catch {
-            sessionStorage.removeItem(`analysis_${scanId}`);
+          } catch (requestError: any) {
+            const detail = requestError.response?.data?.detail;
+            const reportPending = requestError.response?.status === 404
+              && typeof detail === 'string'
+              && detail.startsWith('Report generation is still in progress');
+
+            if (reportPending && Date.now() < deadline) {
+              await wait(REPORT_POLL_INTERVAL_MS);
+              continue;
+            }
+            throw requestError;
           }
         }
+        throw new Error('Report generation did not finish within 90 seconds.');
+      } catch (requestError: any) {
+        if (!cancelled) {
+          setError(requestError.response?.data?.detail || requestError.message || 'This report could not be loaded.');
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
 
-        setAnalysis({
-          scan_id: scanId,
-          scan_type: nextReport.scan_type as AnalysisResponse['scan_type'],
-          status: 'analyzed',
-          classification: {
-            top_label: nextReport.top_label || 'Unknown',
-            confidence: nextReport.confidence || 0,
-            severity: nextReport.severity as AnalysisResponse['classification']['severity'],
-            all_scores: nextReport.all_scores || {},
-          },
-          localization: {
-            type: 'heatmap',
-            heatmap_url: `/static/heatmaps/${scanId}.png`,
-            bounding_boxes: [],
-          },
-          analysis_time_ms: 0,
-          analyzed_at: nextReport.generated_at,
-        });
-      })
-      .catch((requestError) => setError(requestError.response?.data?.detail || 'This report could not be loaded.'))
-      .finally(() => setLoading(false));
+    void loadReport();
+    return () => {
+      cancelled = true;
+    };
   }, [scanId]);
 
   if (loading) {
     return (
       <div className="workspace-page results-loading" aria-label="Loading report">
-        <div className="skeleton skeleton--title" />
+        <p className="eyebrow">Image analysis complete</p>
+        <h1>Preparing the image-aware clinical draft.</h1>
+        <p>Gemini is reviewing the full supplied image. Classification and localization are already available below.</p>
+        {analysis ? (
+          <div className="result-grid">
+            <ScanViewer
+              scanImageUrl={`/static/uploads/${scanId}.png`}
+              heatmapUrl={analysis.localization.heatmap_url}
+              scanType={analysis.scan_type}
+              heatmapTargetLabel={analysis.classification.heatmap_target_label}
+            />
+            <ResultPanel
+              classification={analysis.classification}
+              scanType={analysis.scan_type}
+              analysisTimeMs={analysis.analysis_time_ms}
+            />
+          </div>
+        ) : (
+          <div className="results-skeleton-grid"><div className="skeleton" /><div className="skeleton" /></div>
+        )}
         <div className="skeleton skeleton--tabs" />
-        <div className="results-skeleton-grid"><div className="skeleton" /><div className="skeleton" /></div>
       </div>
     );
   }

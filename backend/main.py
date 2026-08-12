@@ -111,6 +111,7 @@ async def lifespan(app: FastAPI):
     yield  # App runs here
 
     # Shutdown
+    app.state.report_engine.close()
     logger.info("🛑 MedoraAI shutting down.")
 
 

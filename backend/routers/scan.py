@@ -3,6 +3,7 @@ MedoraAI — Scan Upload & Analysis Router
 Handles image upload, validation, and dual-model AI inference pipeline.
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -12,12 +13,12 @@ from typing import Optional
 
 import cv2
 import numpy as np
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile, status
 from PIL import Image
 from sqlalchemy.orm import Session
 
 from config import settings
-from db.database import get_db
+from db.database import get_db, get_session_factory
 from db import crud
 from models.schemas import UploadResponse, AnalysisResponse, ClassificationDetail, LocalizationDetail, BoundingBox
 from routers.auth import get_current_user
@@ -392,6 +393,7 @@ async def upload_scan(
 async def analyze_scan(
     scan_id: str,
     request: Request,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
@@ -415,18 +417,46 @@ async def analyze_scan(
 
     start_time = time.time()
 
+    report_task = None
+
     try:
         # Load image
         image = Image.open(scan.file_path).convert("RGB")
 
-        # Route to correct model
+        # Classify first, then start the unchanged image-aware report request
+        # while Grad-CAM runs. Model work is moved off the async event loop so
+        # health checks and the report network request remain responsive.
         if scan.scan_type == "chest_xray":
-            classification_result, heatmap_overlay, bboxes = _analyze_chest_xray(
-                request, image, scan_id
+            classification_result = await asyncio.to_thread(
+                _classify_chest_xray, request, image
+            )
+            report_task = asyncio.create_task(
+                request.app.state.report_engine.generate_report(
+                    result=classification_result,
+                    scan_type=scan.scan_type,
+                    modality=scan.modality,
+                    image=image,
+                ),
+                name=f"report-{scan_id[:8]}",
+            )
+            heatmap_overlay, bboxes = await asyncio.to_thread(
+                _localize_chest_xray, request, image, classification_result
             )
         elif scan.scan_type == "brain_mri":
-            classification_result, heatmap_overlay, bboxes = _analyze_brain_mri(
-                request, image, scan_id
+            classification_result = await asyncio.to_thread(
+                _classify_brain_mri, request, image
+            )
+            report_task = asyncio.create_task(
+                request.app.state.report_engine.generate_report(
+                    result=classification_result,
+                    scan_type=scan.scan_type,
+                    modality=scan.modality,
+                    image=image,
+                ),
+                name=f"report-{scan_id[:8]}",
+            )
+            heatmap_overlay, bboxes = await asyncio.to_thread(
+                _localize_brain_mri, request, image, classification_result
             )
         else:
             raise ValueError(f"Unknown scan type: {scan.scan_type}")
@@ -455,20 +485,12 @@ async def analyze_scan(
             analysis_time_ms=analysis_time_ms,
         )
 
-        # Generate LLM report
-        report_data = await request.app.state.report_engine.generate_report(
-            result=classification_result,
-            scan_type=scan.scan_type,
-            modality=scan.modality,
-            image=image,
-        )
-
-        # Store report in DB
-        crud.replace_report(
-            db=db,
-            scan_id=scan_id,
-            report_data=report_data,
-            llm_provider=report_data.get("llm_provider", "template"),
+        # Do not hold the analysis response open for the report. The report task
+        # already overlaps Grad-CAM and is persisted after the response is sent.
+        background_tasks.add_task(
+            _store_generated_report,
+            report_task,
+            scan_id,
         )
 
         logger.info(
@@ -496,6 +518,8 @@ async def analyze_scan(
         )
 
     except Exception as e:
+        if report_task is not None and not report_task.done():
+            report_task.cancel()
         crud.update_scan_status(db, scan_id, "failed")
         logger.error(f"Analysis failed for {scan_id[:8]}: {e}", exc_info=True)
         raise HTTPException(
@@ -504,15 +528,16 @@ async def analyze_scan(
         )
 
 
-def _analyze_chest_xray(request: Request, image: Image.Image, scan_id: str):
-    """Run chest X-ray analysis pipeline."""
-    from datetime import datetime
+def _classify_chest_xray(request: Request, image: Image.Image):
+    """Run chest X-ray classification."""
+    classifier = request.app.state.chest_classifier
+    return classifier.predict(image)
 
+
+def _localize_chest_xray(request: Request, image: Image.Image, result):
+    """Generate chest X-ray Grad-CAM localization for a classification."""
     classifier = request.app.state.chest_classifier
     gradcam = request.app.state.chest_gradcam
-
-    # Classify
-    result = classifier.predict(image)
 
     # Always generate a real Grad-CAM heatmap targeting the highest-scoring
     # pathology class. Even when the final label is "No Finding", this shows
@@ -527,18 +552,19 @@ def _analyze_chest_xray(request: Request, image: Image.Image, scan_id: str):
     raw_cam = gradcam.generate_raw_cam(input_tensor, heatmap_target_idx, image=image)
     bboxes = gradcam.heatmap_to_bboxes(raw_cam, threshold=0.6)
 
-    return result, heatmap_overlay, bboxes
+    return heatmap_overlay, bboxes
 
 
-def _analyze_brain_mri(request: Request, image: Image.Image, scan_id: str):
-    """Run brain tumor analysis pipeline."""
-    from datetime import datetime
+def _classify_brain_mri(request: Request, image: Image.Image):
+    """Run brain MRI classification."""
+    classifier = request.app.state.brain_classifier
+    return classifier.predict(image)
 
+
+def _localize_brain_mri(request: Request, image: Image.Image, result):
+    """Generate brain MRI Grad-CAM++ localization for a classification."""
     classifier = request.app.state.brain_classifier
     gradcam = request.app.state.brain_gradcam
-
-    # Classify
-    result = classifier.predict(image)
 
     # Generate Grad-CAM heatmap
     preprocessed = classifier.preprocess(image)
@@ -549,7 +575,39 @@ def _analyze_brain_mri(request: Request, image: Image.Image, scan_id: str):
     # Extract bounding boxes
     bboxes = gradcam.heatmap_to_bboxes(raw_cam, threshold=0.5)
 
-    return result, heatmap_overlay, bboxes
+    return heatmap_overlay, bboxes
+
+
+async def _store_generated_report(report_task, scan_id: str) -> None:
+    """Persist a completed report using a session independent of the request."""
+    started = time.perf_counter()
+    try:
+        report_data = await report_task
+        SessionLocal = get_session_factory()
+        report_db = SessionLocal()
+        try:
+            if crud.get_scan(report_db, scan_id) is None:
+                logger.info("Discarding report for deleted scan %s", scan_id[:8])
+                return
+            crud.replace_report(
+                db=report_db,
+                scan_id=scan_id,
+                report_data=report_data,
+                llm_provider=report_data.get("llm_provider", "template"),
+            )
+        finally:
+            report_db.close()
+
+        logger.info(
+            "Clinical report ready for %s via %s (background store %.0fms)",
+            scan_id[:8],
+            report_data.get("llm_provider", "template"),
+            (time.perf_counter() - started) * 1000,
+        )
+    except asyncio.CancelledError:
+        logger.info("Clinical report generation cancelled for %s", scan_id[:8])
+    except Exception:
+        logger.exception("Clinical report generation failed for %s", scan_id[:8])
 
 
 # Need datetime for the endpoint

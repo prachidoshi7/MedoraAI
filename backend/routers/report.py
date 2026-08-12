@@ -55,7 +55,16 @@ async def get_report(
     # Get report from DB
     report = crud.get_report_by_scan(db, scan_id)
     if not report:
-        raise HTTPException(status_code=404, detail="Report not yet generated. Run analysis first.")
+        if scan.status not in {"analyzing", "analyzed"}:
+            raise HTTPException(
+                status_code=404,
+                detail="Report not yet generated. Run analysis first.",
+            )
+        raise HTTPException(
+            status_code=404,
+            detail="Report generation is still in progress. Please retry shortly.",
+            headers={"Retry-After": "1"},
+        )
 
     # Parse stored JSON
     try:

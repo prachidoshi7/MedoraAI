@@ -9,8 +9,7 @@ const steps: Array<{ key: AnalysisStep; label: string }> = [
   { key: 'uploading', label: 'Upload' },
   { key: 'classifying', label: 'Review' },
   { key: 'generating_heatmap', label: 'Map' },
-  { key: 'generating_report', label: 'Report' },
-  { key: 'complete', label: 'Ready' },
+  { key: 'complete', label: 'Results' },
 ];
 
 export default function LoadingSpinner({ step, stepLabel }: LoadingSpinnerProps) {
@@ -22,7 +21,7 @@ export default function LoadingSpinner({ step, stepLabel }: LoadingSpinnerProps)
         <div className="processing-orbit" aria-hidden="true"><span /><i /></div>
         <p className="eyebrow">Preparing study</p>
         <h2>{stepLabel}</h2>
-        <p className="processing-note">Keep this window open. Your report will appear when the review is ready.</p>
+        <p className="processing-note">Image analysis will open as soon as localization is ready.</p>
         <ol className="processing-steps">
           {steps.map((item, index) => (
             <li key={item.key} className={index < current ? 'done' : index === current ? 'active' : ''}>
