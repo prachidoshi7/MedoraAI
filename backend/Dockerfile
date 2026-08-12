@@ -1,24 +1,20 @@
 FROM python:3.11-slim
 
-WORKDIR /app
+WORKDIR /app/backend
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
     curl \
-    libcairo2 \
-    libffi-dev \
-    libgdk-pixbuf-2.0-0 \
-    libglib2.0-0 \
-    libpango-1.0-0 \
-    libpangocairo-1.0-0 \
+    libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu
+RUN pip install torch==2.3.1 torchvision==0.18.1 \
+        --index-url https://download.pytorch.org/whl/cpu \
+    && pip install -r requirements.txt
 
 COPY . .
 

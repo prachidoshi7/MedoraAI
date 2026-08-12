@@ -217,6 +217,35 @@ BRAIN-SPECIFIC INSTRUCTIONS:
 
 Generate a detailed, grounded limited-image neuroradiology report for clinical review."""
 
+        elif scan_type in {"lung_ct", "kidney_us"}:
+            exam_name = "Lung CT image" if scan_type == "lung_ct" else "Kidney ultrasound image"
+            scores_text = "\n".join(
+                f"  - {label}: {score * 100:.1f}%"
+                for label, score in sorted(result.all_scores.items(), key=lambda x: -x[1])
+            )
+            organ_instructions = (
+                "Describe only visible lung parenchyma and lesions. Do not infer staging, histology, metastasis, or treatment from the classifier category."
+                if scan_type == "lung_ct"
+                else "Describe only visible renal structures and echogenic foci. Do not infer obstruction, hydronephrosis, stone size, or laterality unless clearly shown."
+            )
+            return f"""EXAM: {exam_name}
+AVAILABLE INPUT: One uploaded 2D image only; the complete study and acquisition metadata are not provided.
+CLINICAL HISTORY: Not provided.
+COMPARISON: No prior study supplied.
+
+SUPPORTING CLASSIFIER OUTPUT (not a substitute for visual findings):
+- Highest-scoring label: {result.top_label} ({result.confidence * 100:.1f}%)
+- Class scores:
+{scores_text}
+
+ORGAN-SPECIFIC INSTRUCTIONS:
+- {organ_instructions}
+- Explicitly state the limitation of a single exported image.
+- Do not convert confidence into stage, grade, urgency, or definitive diagnosis.
+- Recommend review of the complete source study and clinical correlation.
+
+Generate a detailed, grounded preliminary report for clinical review."""
+
         else:
             return f"""SCAN TYPE: Medical Image ({scan_type})
 AI MODEL OUTPUT:
@@ -480,23 +509,30 @@ ADDITIONAL SAFETY REQUIREMENTS:
             return None
 
     async def _call_groq(self, user_prompt: str) -> Optional[dict]:
-        """Call Groq API with Llama 3.1 70B."""
+        """Call Groq's OpenAI-compatible HTTP endpoint."""
         try:
-            from groq import AsyncGroq
+            import httpx
 
-            client = AsyncGroq(api_key=self.groq_key)
-            response = await client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": user_prompt},
-                ],
-                max_tokens=1800,
-                temperature=0.0,
-                response_format={"type": "json_object"},
-            )
-
-            content = response.choices[0].message.content
+            async with httpx.AsyncClient(timeout=25.0) as client:
+                response = await client.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {self.groq_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": "llama-3.3-70b-versatile",
+                        "messages": [
+                            {"role": "system", "content": SYSTEM_PROMPT},
+                            {"role": "user", "content": user_prompt},
+                        ],
+                        "max_tokens": 1800,
+                        "temperature": 0.0,
+                        "response_format": {"type": "json_object"},
+                    },
+                )
+                response.raise_for_status()
+                content = response.json()["choices"][0]["message"]["content"]
             result = self._parse_json_report(content)
             logger.info("Groq report generated successfully.")
             return result
@@ -543,23 +579,30 @@ ADDITIONAL SAFETY REQUIREMENTS:
         return None
 
     async def _call_openai(self, user_prompt: str) -> Optional[dict]:
-        """Call OpenAI API."""
+        """Call OpenAI's stable v1 Chat Completions HTTP endpoint."""
         try:
-            from openai import AsyncOpenAI
+            import httpx
 
-            client = AsyncOpenAI(api_key=self.openai_key)
-            response = await client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": user_prompt},
-                ],
-                max_tokens=1800,
-                temperature=0.0,
-                response_format={"type": "json_object"},
-            )
-
-            content = response.choices[0].message.content
+            async with httpx.AsyncClient(timeout=25.0) as client:
+                response = await client.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {self.openai_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": "gpt-4o-mini",
+                        "messages": [
+                            {"role": "system", "content": SYSTEM_PROMPT},
+                            {"role": "user", "content": user_prompt},
+                        ],
+                        "max_tokens": 1800,
+                        "temperature": 0.0,
+                        "response_format": {"type": "json_object"},
+                    },
+                )
+                response.raise_for_status()
+                content = response.json()["choices"][0]["message"]["content"]
             result = self._parse_json_report(content)
             logger.info("OpenAI report generated successfully.")
             return result
@@ -659,6 +702,25 @@ ADDITIONAL SAFETY REQUIREMENTS:
             recommendations = (
                 "Review the complete diagnostic MRI examination, including all available sequences and prior studies. "
                 "Further imaging or specialty referral should be based on verified imaging findings and the clinical presentation."
+            )
+        elif scan_type in {"lung_ct", "kidney_us"}:
+            exam = "lung CT" if scan_type == "lung_ct" else "kidney ultrasound"
+            technique = (
+                f"Single exported {exam} image submitted for limited review. The complete examination, "
+                "acquisition parameters, and additional views are not available."
+            )
+            image_quality = (
+                "Diagnostic completeness cannot be established from one exported image; subtle or out-of-frame findings may not be represented."
+            )
+            findings = (
+                f"Automated analysis produced its strongest category signal for {label} ({score * 100:.1f}%). "
+                "Independent characterization is unavailable in this template fallback."
+            )
+            impression = (
+                f"1. Indeterminate {exam} category signal for {label}; direct review of the complete source examination is required."
+            )
+            recommendations = (
+                f"Review the complete {exam} study with clinical correlation. Management should be based on verified imaging findings."
             )
         else:
             technique = "Single medical image submitted for limited review."
@@ -943,11 +1005,13 @@ ADDITIONAL SAFETY REQUIREMENTS:
     @staticmethod
     def _complete_report_sections(report: dict, scan_type: str) -> dict:
         """Normalize provider and legacy template output into the clinical schema."""
-        default_technique = (
-            "Single brain MRI image submitted; sequence, plane, contrast status, and complete series are not provided."
-            if scan_type == "brain_mri"
-            else "Single chest radiograph submitted; projection, positioning, and additional views are not provided."
-        )
+        technique_defaults = {
+            "brain_mri": "Single brain MRI image submitted; sequence, plane, contrast status, and complete series are not provided.",
+            "chest_xray": "Single chest radiograph submitted; projection, positioning, and additional views are not provided.",
+            "lung_ct": "Single lung CT image submitted; acquisition details and complete series are not provided.",
+            "kidney_us": "Single kidney ultrasound image submitted; acquisition details and complete study are not provided.",
+        }
+        default_technique = technique_defaults.get(scan_type, "Single medical image submitted for limited review.")
         defaults = {
             "technique": default_technique,
             "comparison": "No prior imaging was supplied for comparison.",
@@ -1100,6 +1164,16 @@ ADDITIONAL SAFETY REQUIREMENTS:
                 "Interpretation is limited to one exported radiograph; projection, positioning, "
                 "exposure parameters, and the complete examination cannot be independently verified."
             )
+        elif scan_type in {"lung_ct", "kidney_us"}:
+            exam_name = "lung CT" if scan_type == "lung_ct" else "kidney ultrasound"
+            grounded["technique"] = (
+                f"Single uploaded 2D {exam_name} image. Acquisition details, additional views, "
+                "and the complete source examination are not available."
+            )
+            grounded["image_quality"] = (
+                "Limited diagnostic assessment because only one exported image is available; "
+                "subtle and out-of-frame findings cannot be excluded."
+            )
 
         if not str(grounded.get("recommendations") or "").strip():
             grounded["recommendations"] = (
@@ -1236,7 +1310,12 @@ RULES:
             return stored
 
         scan_type = report_data.get("scan_type", "medical scan")
-        scan_label = "brain MRI image" if scan_type == "brain_mri" else "chest X-ray"
+        scan_label = {
+            "brain_mri": "brain MRI image",
+            "chest_xray": "chest X-ray",
+            "lung_ct": "lung CT image",
+            "kidney_us": "kidney ultrasound image",
+        }.get(scan_type, "medical image")
         return self._patient_summary_template(report_data, scan_label)
 
     async def _translate_with_sarvam(self, text: str, target_code: str) -> Optional[str]:

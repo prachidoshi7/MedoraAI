@@ -8,6 +8,8 @@ Expected files:
 chest_xray_efficientnet_b4.pt
 chest_xray_efficientnet_b4.labels.json
 best_brain_model.keras
+cnn_lung_model.pth
+cnn_Kidney_Stone_model.pth
 ```
 
 `.env` should point to them from the repo root:
@@ -15,6 +17,8 @@ best_brain_model.keras
 ```env
 CHEST_MODEL_PATH=./models/chest_xray_efficientnet_b4.pt
 BRAIN_MODEL_PATH=./models/best_brain_model.keras
+LUNG_MODEL_PATH=./models/cnn_lung_model.pth
+KIDNEY_MODEL_PATH=./models/cnn_Kidney_Stone_model.pth
 ```
 
 ## Chest X-Ray Model
@@ -33,7 +37,16 @@ The label order must match `backend/services/chest_classifier.py`.
 - Weight format: Keras `.keras`
 - Loaded by `backend/services/brain_classifier.py`
 
-`best_brain_model.keras` is ignored because it exceeds GitHub's normal file-size limit. Supply it locally, use Git LFS, or distribute it through a private release. `brain_tumor_mobilenetv2.h5` is retained only as a legacy artifact.
+All runtime model binaries in this directory are tracked with Git LFS. Run
+`git lfs install` before cloning and `git lfs pull` if a checkout contains
+pointer files. The incompatible legacy MobileNet artifact is intentionally
+excluded from the runnable repository.
+
+## Lung CT and Kidney Ultrasound
+
+The two compact PyTorch state dictionaries are committed under `models/` and
+load automatically after a normal clone. Their model architectures live in
+`backend/services/lung_classifier.py` and `backend/services/kidney_classifier.py`.
 
 ## Importing A Chest Export Zip
 

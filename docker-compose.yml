@@ -1,5 +1,3 @@
-version: '3.9'
-
 services:
   backend:
     build:
@@ -14,8 +12,10 @@ services:
     environment:
       - SECRET_KEY=${SECRET_KEY:-medoraai-hackathon-secret}
       - DATA_DIR=/app/data
-      - CHEST_MODEL_PATH=${CHEST_MODEL_PATH:-}
-      - BRAIN_MODEL_PATH=${BRAIN_MODEL_PATH:-}
+      - CHEST_MODEL_PATH=/app/models/chest_xray_efficientnet_b4.pt
+      - BRAIN_MODEL_PATH=/app/models/best_brain_model.keras
+      - LUNG_MODEL_PATH=/app/models/cnn_lung_model.pth
+      - KIDNEY_MODEL_PATH=/app/models/cnn_Kidney_Stone_model.pth
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3-flash-preview}
       - GROQ_API_KEY=${GROQ_API_KEY:-}

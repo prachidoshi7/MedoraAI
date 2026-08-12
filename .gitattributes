@@ -1,0 +1,4 @@
+# Runtime model binaries are versioned through Git LFS.
+models/*.pt filter=lfs diff=lfs merge=lfs -text
+models/*.pth filter=lfs diff=lfs merge=lfs -text
+models/*.keras filter=lfs diff=lfs merge=lfs -text

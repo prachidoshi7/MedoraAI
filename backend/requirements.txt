@@ -1,47 +1,38 @@
-# ==========================================
-# MedoraAI Backend Dependencies
-# ==========================================
+# MedoraAI backend runtime dependencies
+# Supported interpreter: Python 3.11
 
-# --- API Framework ---
+# API and multipart uploads
 fastapi==0.111.0
 uvicorn[standard]==0.30.1
 python-multipart==0.0.9
 
-# --- Authentication ---
+# Authentication
 python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
+passlib==1.7.4
+# Passlib 1.7.4 expects bcrypt's legacy version metadata API.
+bcrypt==4.0.1
 
-# --- Database ---
+# Database and configuration
 sqlalchemy==2.0.31
 pydantic-settings==2.3.4
+python-dotenv==1.0.1
 
-# --- Image Processing ---
+# Imaging and DICOM
 pillow==10.4.0
 numpy==1.26.4
 opencv-python-headless==4.10.0.84
-
-# --- DICOM Support ---
 pydicom==2.4.4
 
-# --- ML: Chest X-Ray (PyTorch) ---
-torch
-torchvision
+# PyTorch classifiers and explainability
+torch==2.3.1
+torchvision==0.18.1
 timm==0.9.16
-pytorch-grad-cam==1.5.4
+grad-cam==1.5.4
 
-# --- ML: Brain Tumor (TensorFlow) ---
+# TensorFlow brain MRI classifier
 tensorflow-cpu==2.16.1
 
-# --- Report Generation ---
-jinja2==3.1.4
+# Reports, translation, and provider HTTP APIs
+jinja2==3.1.6
 reportlab==4.4.10
-
-# --- LLM API Clients ---
-httpx>=0.28.1,<1.0.0
-groq==0.9.0
-anthropic==0.31.0
-openai==1.35.0
-google-genai
-
-# --- Utilities ---
-python-dotenv==1.0.1
+httpx==0.28.1

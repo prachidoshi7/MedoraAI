@@ -404,6 +404,128 @@ class PDFGenerator:
 
         return self.generate_pdf(data, scan_id, heatmap_path=heatmap_path)
 
+    def generate_case_study_pdf(self, case_study: dict) -> bytes:
+        """Generate a portable multi-section summary of the full patient journey."""
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+        from reportlab.lib.units import mm
+        from reportlab.platypus import (
+            HRFlowable,
+            Paragraph,
+            SimpleDocTemplate,
+            Spacer,
+            Table,
+            TableStyle,
+        )
+
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=A4,
+            leftMargin=18 * mm,
+            rightMargin=18 * mm,
+            topMargin=18 * mm,
+            bottomMargin=18 * mm,
+            title=f"MedoraAI Case Study {case_study.get('id', '')}",
+        )
+        styles = getSampleStyleSheet()
+        title = ParagraphStyle(
+            "MedoraCaseTitle", parent=styles["Title"], textColor=colors.HexColor("#15343B"),
+            fontSize=20, leading=24, spaceAfter=5,
+        )
+        heading = ParagraphStyle(
+            "MedoraCaseHeading", parent=styles["Heading2"], textColor=colors.HexColor("#0B7285"),
+            fontSize=11, leading=14, spaceBefore=12, spaceAfter=5,
+        )
+        body = ParagraphStyle(
+            "MedoraCaseBody", parent=styles["BodyText"], fontSize=9.5, leading=14,
+            textColor=colors.HexColor("#273238"),
+        )
+        patient = case_study.get("patient", {})
+        story = [
+            Paragraph("MedoraAI · Complete Case Study", title),
+            Paragraph(
+                f"CASE {case_study.get('id', '')} · {escape(str(case_study.get('status', '')).upper())}",
+                styles["Overline"] if "Overline" in styles else body,
+            ),
+            Spacer(1, 7),
+            Table(
+                [
+                    ["Patient", escape(str(patient.get("full_name", ""))), "Patient ID", str(patient.get("id", ""))],
+                    ["Appointment", str(case_study.get("appointment_id", "")), "Created", escape(str(case_study.get("created_at", "")))],
+                ],
+                colWidths=[27 * mm, 55 * mm, 27 * mm, 55 * mm],
+                style=TableStyle([
+                    ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#EAF5F6")),
+                    ("BACKGROUND", (2, 0), (2, -1), colors.HexColor("#EAF5F6")),
+                    ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#D9E0E1")),
+                    ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
+                    ("FONTSIZE", (0, 0), (-1, -1), 8.5),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("TOPPADDING", (0, 0), (-1, -1), 6),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                ]),
+            ),
+            Spacer(1, 8),
+            HRFlowable(width="100%", thickness=1, color=colors.HexColor("#17343B")),
+        ]
+
+        for label, key in (
+            ("Chief complaint", "chief_complaint"),
+            ("Clinical history", "clinical_history"),
+            ("Diagnostic findings", "diagnostic_findings"),
+            ("Clinical diagnosis", "diagnosis"),
+            ("Treatment plan", "treatment_plan"),
+        ):
+            story.extend([
+                Paragraph(label, heading),
+                Paragraph(escape(str(case_study.get(key) or "Not documented.")).replace("\n", "<br/>"), body),
+            ])
+
+        prescriptions = case_study.get("prescriptions", [])
+        story.append(Paragraph("Prescriptions", heading))
+        if prescriptions:
+            rows = [["Medication", "Dosage", "Frequency", "Duration"]]
+            for prescription in prescriptions:
+                for medication in prescription.get("medications", []):
+                    rows.append([
+                        medication.get("name", ""), medication.get("dosage", ""),
+                        medication.get("frequency", ""), medication.get("duration", ""),
+                    ])
+            if len(rows) == 1:
+                rows.append(["No medication recorded", "", "", ""])
+            table = Table(rows, colWidths=[55 * mm, 34 * mm, 39 * mm, 36 * mm], repeatRows=1)
+            table.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#15343B")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#D9E0E1")),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ]))
+            story.append(table)
+        else:
+            story.append(Paragraph("No prescription recorded.", body))
+
+        story.extend([
+            Paragraph("Follow-up plan", heading),
+            Paragraph(escape(str(case_study.get("follow_up_plan") or "Not documented.")), body),
+            Paragraph("Doctor notes", heading),
+            Paragraph(escape(str(case_study.get("doctor_notes") or "None.")), body),
+            Spacer(1, 14),
+            HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#AAB7BA")),
+            Spacer(1, 6),
+            Paragraph(
+                "This case study consolidates AI-supported imaging findings and clinician documentation. "
+                "Clinical decisions remain the responsibility of the treating medical team.",
+                ParagraphStyle("MedoraCaseDisclaimer", parent=body, fontSize=7.5, leading=10, textColor=colors.HexColor("#66777C")),
+            ),
+        ])
+        doc.build(story)
+        return buffer.getvalue()
+
     def _generate_simple_pdf(self, report_data: dict, scan_id: str) -> bytes:
         """
         Generate a minimal text-only PDF without native rendering dependencies.

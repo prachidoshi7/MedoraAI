@@ -32,7 +32,7 @@ export function useScanAnalysis() {
 
   const stepLabel = STEP_LABELS[step];
 
-  const analyze = useCallback(async (file: File, scanType: ScanType) => {
+  const analyze = useCallback(async (file: File, scanType: ScanType, diagnosticOrderId?: number) => {
     setStep('uploading');
     setError(null);
     setUploadResult(null);
@@ -42,7 +42,7 @@ export function useScanAnalysis() {
 
     try {
       // Step 1: Upload
-      const upload = await uploadScan(file, scanType);
+      const upload = await uploadScan(file, scanType, diagnosticOrderId);
       setUploadResult(upload);
       setStep('classifying');
 

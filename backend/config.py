@@ -17,7 +17,7 @@ class Settings(BaseSettings):
 
     # --- Application ---
     APP_NAME: str = "MedoraAI"
-    APP_VERSION: str = "1.0.0"
+    APP_VERSION: str = "2.0.0"
     DEBUG: bool = False
     LOG_LEVEL: str = "info"
 
@@ -31,12 +31,20 @@ class Settings(BaseSettings):
 
     # --- ML Models ---
     CHEST_MODEL_PATH: Optional[str] = Field(
-        default=None,
-        description="Path to fine-tuned chest X-ray model weights (.pt). If None, uses timm pretrained."
+        default="models/chest_xray_efficientnet_b4.pt",
+        description="Path to fine-tuned chest X-ray model weights (.pt)."
     )
     BRAIN_MODEL_PATH: Optional[str] = Field(
-        default=None,
+        default="models/best_brain_model.keras",
         description="Path to brain tumor model (.keras). EfficientNetB3 4-class classifier."
+    )
+    LUNG_MODEL_PATH: Optional[str] = Field(
+        default="models/cnn_lung_model.pth",
+        description="Path to the five-class lung CT CNN weights.",
+    )
+    KIDNEY_MODEL_PATH: Optional[str] = Field(
+        default="models/cnn_Kidney_Stone_model.pth",
+        description="Path to the kidney ultrasound stone classifier weights.",
     )
 
     # --- Pre-inference scan type verification ---
@@ -152,6 +160,14 @@ class Settings(BaseSettings):
     @property
     def brain_model_path(self) -> Optional[str]:
         return self.resolve_path(self.BRAIN_MODEL_PATH)
+
+    @property
+    def lung_model_path(self) -> Optional[str]:
+        return self.resolve_path(self.LUNG_MODEL_PATH)
+
+    @property
+    def kidney_model_path(self) -> Optional[str]:
+        return self.resolve_path(self.KIDNEY_MODEL_PATH)
 
 
 # Singleton instance

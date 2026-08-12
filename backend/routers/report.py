@@ -7,6 +7,7 @@ import json
 import logging
 import os
 from types import SimpleNamespace
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import Response
@@ -22,8 +23,11 @@ from models.schemas import (
     PatientSummaryResponse,
     ReportData,
     ReportResponse,
+    DoctorReviewRequest,
+    ForwardReportRequest,
 )
 from routers.auth import get_current_user
+from routers.workflow_utils import ensure_scan_access
 from services.llm_report_engine import LLMReportEngine
 
 logger = logging.getLogger(__name__)
@@ -45,12 +49,10 @@ async def get_report(
     Retrieve the generated clinical report for a scan.
     Returns the clinician-facing report data.
     """
-    # Verify scan belongs to user
     scan = crud.get_scan(db, scan_id)
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
-    if scan.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Access denied")
+    ensure_scan_access(current_user, scan)
 
     # Get report from DB
     report = crud.get_report_by_scan(db, scan_id)
@@ -65,6 +67,8 @@ async def get_report(
             detail="Report generation is still in progress. Please retry shortly.",
             headers={"Retry-After": "1"},
         )
+    if current_user.role == "patient" and not report.doctor_approved_at:
+        raise HTTPException(status_code=409, detail="Report is awaiting doctor approval")
 
     # Parse stored JSON
     try:
@@ -121,8 +125,9 @@ async def regenerate_report(
     scan = crud.get_scan(db, scan_id)
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
-    if scan.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Access denied")
+    ensure_scan_access(current_user, scan)
+    if current_user.role not in {"doctor", "admin"}:
+        raise HTTPException(status_code=403, detail="Only doctors can regenerate reports")
     stored_result = crud.get_result_by_scan(db, scan_id)
     if not stored_result:
         raise HTTPException(status_code=409, detail="Analyze the scan before generating a report")
@@ -196,17 +201,25 @@ async def download_pdf(
     Accepts optional edited findings/impression/recommendations.
     Returns PDF binary with Content-Disposition: attachment for auto-download.
     """
-    # Verify scan belongs to user
     scan = crud.get_scan(db, scan_id)
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
-    if scan.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Access denied")
+    ensure_scan_access(current_user, scan)
 
     # Get report from DB
     report = crud.get_report_by_scan(db, scan_id)
     if not report:
         raise HTTPException(status_code=404, detail="Report not yet generated")
+    if current_user.role == "patient" and not report.doctor_approved_at:
+        raise HTTPException(status_code=409, detail="Report is awaiting doctor approval")
+
+    if current_user.role not in {"doctor", "admin"} and pdf_request:
+        has_edits = any(
+            value is not None
+            for value in pdf_request.model_dump().values()
+        )
+        if has_edits:
+            raise HTTPException(status_code=403, detail="Only doctors can edit a clinical report")
 
     try:
         report_data = json.loads(report.report_json)
@@ -299,6 +312,62 @@ async def download_pdf(
         )
 
 
+@router.post("/{scan_id}/doctor-review", response_model=ReportResponse)
+async def doctor_review(
+    scan_id: str,
+    payload: DoctorReviewRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Apply a clinician's edits and optionally sign off the AI draft."""
+    if current_user.role not in {"doctor", "admin"}:
+        raise HTTPException(status_code=403, detail="Only doctors can review reports")
+    scan = crud.get_scan(db, scan_id)
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan not found")
+    ensure_scan_access(current_user, scan)
+    report = crud.get_report_by_scan(db, scan_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not yet generated")
+    if payload.edited_findings is not None:
+        report.edited_findings = payload.edited_findings
+    if payload.edited_impression is not None:
+        report.edited_impression = payload.edited_impression
+    report.doctor_notes = payload.doctor_notes
+    report.reviewed_by_doctor_id = current_user.id
+    report.doctor_approved_at = datetime.now(timezone.utc) if payload.approve else None
+    if scan.diagnostic_order and payload.approve:
+        scan.diagnostic_order.status = "reviewed"
+    db.commit()
+    db.refresh(report)
+    return await get_report(scan_id=scan_id, db=db, current_user=current_user)
+
+
+@router.post("/{scan_id}/forward", response_model=ReportResponse)
+async def forward_report(
+    scan_id: str,
+    payload: ForwardReportRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Forward a report into another specialist's review queue."""
+    if current_user.role not in {"doctor", "admin"}:
+        raise HTTPException(status_code=403, detail="Only doctors can forward reports")
+    scan = crud.get_scan(db, scan_id)
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan not found")
+    ensure_scan_access(current_user, scan)
+    target = crud.get_user(db, payload.doctor_id)
+    if not target or target.role != "doctor" or not target.is_active:
+        raise HTTPException(status_code=404, detail="Target doctor not found")
+    report = crud.get_report_by_scan(db, scan_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not yet generated")
+    report.forwarded_to_doctor_id = target.id
+    db.commit()
+    return await get_report(scan_id=scan_id, db=db, current_user=current_user)
+
+
 # ============================================================
 # PATIENT-FRIENDLY SUMMARY
 # ============================================================
@@ -328,12 +397,14 @@ async def get_patient_summary(
     if language not in SUPPORTED_LANGUAGES:
         language = "English"
 
-    # Verify scan belongs to user
     scan = crud.get_scan(db, scan_id)
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
-    if scan.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Access denied")
+    ensure_scan_access(current_user, scan)
+    if current_user.role == "patient" and not (
+        scan.report and scan.report.doctor_approved_at
+    ):
+        raise HTTPException(status_code=409, detail="Report is awaiting doctor approval")
 
     # Get report from DB
     report = crud.get_report_by_scan(db, scan_id)

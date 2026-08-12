@@ -13,6 +13,12 @@ const scanLineIcons: Record<ScanType, React.ReactNode> = {
   brain_mri: (
     <svg viewBox="0 0 40 40" aria-hidden="true"><path d="M18 7a6 6 0 0 0-10 5c-3 1-4 5-2 8-2 3 0 7 3 8 0 4 4 6 7 4 2 3 6 2 7-1V10c-1-3-3-4-5-3Zm5 5c3-4 9-2 9 3 4 2 4 8 1 10 1 4-3 8-7 6l-3 2" /></svg>
   ),
+  lung_ct: (
+    <svg viewBox="0 0 40 40" aria-hidden="true"><path d="M19 8v13M15 13c-5 3-7 8-7 14 0 4 2 6 6 6h2c2 0 3-2 3-4V18m6-5c5 3 7 8 7 14 0 4-2 6-6 6h-2c-2 0-3-2-3-4V18" /></svg>
+  ),
+  kidney_us: (
+    <svg viewBox="0 0 40 40" aria-hidden="true"><path d="M16 8c-6 0-9 6-9 13s4 12 9 12c3 0 4-3 4-6V14c0-4-1-6-4-6Zm8 0c6 0 9 6 9 13s-4 12-9 12c-3 0-4-3-4-6V14c0-4 1-6 4-6Z" /></svg>
+  ),
 };
 
 export default function UploadPage() {
@@ -63,7 +69,7 @@ export default function UploadPage() {
                   >
                     <span className="scan-type-icon">{scanLineIcons[type.id]}</span>
                     <span className="scan-type-copy">
-                      <small>{type.id === 'chest_xray' ? 'DIGITAL RADIOGRAPHY' : 'MAGNETIC RESONANCE'}</small>
+                      <small>{{ chest_xray: 'DIGITAL RADIOGRAPHY', brain_mri: 'MAGNETIC RESONANCE', lung_ct: 'COMPUTED TOMOGRAPHY', kidney_us: 'ULTRASOUND' }[type.id]}</small>
                       <strong>{type.label}</strong>
                       <span>{type.description}</span>
                     </span>

@@ -43,9 +43,9 @@ async def lifespan(app: FastAPI):
     init_db(settings.database_url)
     logger.info("🗄️ Database initialized.")
 
-    # 3. Seed demo user
-    _seed_demo_user()
-    logger.info(f"👤 Demo user ready: {settings.DEMO_USER}")
+    # 3. Seed departments and role-specific demo identities
+    _seed_hospital_demo()
+    logger.info("👥 Hospital demo identities ready.")
 
     # 4. Load ML models
     logger.info("🧠 Loading ML models...")
@@ -67,12 +67,36 @@ async def lifespan(app: FastAPI):
     app.state.brain_classifier = brain_classifier
     logger.info("  ✅ Brain Tumor classifier (EfficientNetB3, 4-class) loaded.")
 
+    # Multi-organ classifiers (PyTorch). Keep startup resilient if a local
+    # weight file has not been downloaded in a fresh development checkout.
+    try:
+        from services.lung_classifier import LungClassifier
+        app.state.lung_classifier = LungClassifier(settings.lung_model_path, device="cpu")
+        logger.info("  ✅ Lung CT classifier (5-class CNN) loaded.")
+    except Exception as exc:
+        app.state.lung_classifier = None
+        logger.warning("  ⚠️ Lung CT classifier unavailable: %s", exc)
+
+    try:
+        from services.kidney_classifier import KidneyClassifier
+        app.state.kidney_classifier = KidneyClassifier(settings.kidney_model_path, device="cpu")
+        logger.info("  ✅ Kidney ultrasound classifier (2-class CNN) loaded.")
+    except Exception as exc:
+        app.state.kidney_classifier = None
+        logger.warning("  ⚠️ Kidney ultrasound classifier unavailable: %s", exc)
+
     # 5. Initialize Grad-CAM engines
     from services.chest_gradcam import ChestGradCAM
     from services.brain_gradcam import BrainGradCAM
 
     app.state.chest_gradcam = ChestGradCAM(chest_classifier)
     app.state.brain_gradcam = BrainGradCAM(brain_classifier)
+    if app.state.lung_classifier:
+        from services.lung_gradcam import LungGradCAM
+        app.state.lung_gradcam = LungGradCAM(app.state.lung_classifier)
+    if app.state.kidney_classifier:
+        from services.kidney_gradcam import KidneyGradCAM
+        app.state.kidney_gradcam = KidneyGradCAM(app.state.kidney_classifier)
     logger.info("  ✅ Grad-CAM engines initialized.")
 
     # 6. Initialize the independent, fail-closed scan type gate.
@@ -115,8 +139,8 @@ async def lifespan(app: FastAPI):
     logger.info("🛑 MedoraAI shutting down.")
 
 
-def _seed_demo_user():
-    """Create the demo user if it doesn't exist."""
+def _seed_hospital_demo():
+    """Seed departments and deterministic multi-role hackathon accounts."""
     from passlib.context import CryptContext
 
     pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -124,11 +148,46 @@ def _seed_demo_user():
     db = SessionLocal()
 
     try:
-        existing = crud.get_user_by_username(db, settings.DEMO_USER)
-        if not existing:
-            hashed = pwd_context.hash(settings.DEMO_PASSWORD)
-            crud.create_user(db, settings.DEMO_USER, hashed)
-            logger.info(f"  Created demo user: {settings.DEMO_USER}/{settings.DEMO_PASSWORD}")
+        department_specs = [
+            ("General Medicine", "Primary consultation and coordinated care", "✦"),
+            ("Neurology", "Brain and nervous system care", "◉"),
+            ("Pulmonology", "Respiratory and lung care", "◌"),
+            ("Nephrology", "Kidney and renal care", "◇"),
+            ("Radiology", "Medical imaging and diagnostic services", "⌁"),
+        ]
+        departments = {
+            name: crud.get_or_create_department(db, name, description, icon)
+            for name, description, icon in department_specs
+        }
+        demo_users = [
+            (settings.DEMO_USER, settings.DEMO_PASSWORD, "doctor", "Demo Clinician", "Internal Medicine", "General Medicine"),
+            ("patient", "patient123", "patient", "Amit Patient", "", None),
+            ("dr.sharma", "doctor123", "doctor", "Dr. Priya Sharma", "Internal Medicine", "General Medicine"),
+            ("dr.patel", "doctor123", "doctor", "Dr. Rajesh Patel", "Neurologist", "Neurology"),
+            ("dr.kumar", "doctor123", "doctor", "Dr. Anil Kumar", "Pulmonologist", "Pulmonology"),
+            ("dr.singh", "doctor123", "doctor", "Dr. Manpreet Singh", "Nephrologist", "Nephrology"),
+            ("lab.tech", "lab123", "lab_tech", "Ravi Technician", "Diagnostic Imaging", "Radiology"),
+        ]
+        for username, password, role, full_name, specialization, department_name in demo_users:
+            department_id = departments[department_name].id if department_name else None
+            existing = crud.get_user_by_username(db, username)
+            if existing:
+                existing.role = role
+                existing.full_name = existing.full_name or full_name
+                existing.specialization = existing.specialization or specialization
+                existing.department_id = existing.department_id or department_id
+                existing.is_active = True
+            else:
+                crud.create_user(
+                    db,
+                    username=username,
+                    hashed_password=pwd_context.hash(password),
+                    role=role,
+                    full_name=full_name,
+                    specialization=specialization,
+                    department_id=department_id,
+                )
+        db.commit()
     finally:
         db.close()
 
@@ -170,7 +229,12 @@ async def health_check():
         "version": settings.APP_VERSION,
         "models": {
             "chest_xray": "loaded" if hasattr(app.state, "chest_classifier") else "not_loaded",
-            "brain_mri": "loaded" if hasattr(app.state, "brain_classifier") else "not_loaded",
+            "brain_mri": "loaded" if (
+                hasattr(app.state, "brain_classifier")
+                and app.state.brain_classifier.get_model() is not None
+            ) else "not_loaded",
+            "lung_ct": "loaded" if getattr(app.state, "lung_classifier", None) else "not_loaded",
+            "kidney_us": "loaded" if getattr(app.state, "kidney_classifier", None) else "not_loaded",
         },
     }
 
@@ -179,9 +243,14 @@ async def health_check():
 # REGISTER ROUTERS
 # ============================================================
 
-from routers import auth, scan, report, history
+from routers import appointment, auth, case_study, diagnostic, doctors, history, prescription, report, scan
 
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
 app.include_router(scan.router, prefix="/api/v1/scan", tags=["Scan"])
 app.include_router(report.router, prefix="/api/v1/report", tags=["Report"])
 app.include_router(history.router, prefix="/api/v1/history", tags=["History"])
+app.include_router(doctors.router, prefix="/api/v1", tags=["Hospital Directory"])
+app.include_router(appointment.router, prefix="/api/v1/appointments", tags=["Appointments"])
+app.include_router(diagnostic.router, prefix="/api/v1/diagnostic", tags=["Diagnostics"])
+app.include_router(prescription.router, prefix="/api/v1/prescriptions", tags=["Prescriptions"])
+app.include_router(case_study.router, prefix="/api/v1/case-study", tags=["Case Studies"])

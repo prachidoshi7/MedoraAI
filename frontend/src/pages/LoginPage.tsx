@@ -7,10 +7,13 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { isAuthenticated, login } = useAuth();
+  const { isAuthenticated, login, user } = useAuth();
   const navigate = useNavigate();
 
-  if (isAuthenticated) return <Navigate to="/upload" replace />;
+  if (isAuthenticated && user) {
+    const home = user.role === 'patient' ? '/patient/dashboard' : user.role === 'lab_tech' ? '/lab/dashboard' : '/doctor/dashboard';
+    return <Navigate to={home} replace />;
+  }
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -19,7 +22,7 @@ export default function LoginPage() {
     setError('');
     try {
       await login({ username: username.trim(), password });
-      navigate('/upload');
+      navigate('/');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to sign in. Please try again.');
     } finally {
@@ -49,7 +52,7 @@ export default function LoginPage() {
 
       <section className="login-form-panel">
         <div className="login-form-wrap">
-          <p className="eyebrow">Secure clinician access</p>
+          <p className="eyebrow">Secure hospital access</p>
           <h2>Welcome back.</h2>
           <p className="form-intro">Enter your credentials to open the diagnostic workspace.</p>
 
@@ -84,11 +87,12 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <div className="demo-note">
-            <span>Demo access</span>
-            <code>demo</code><span>/</span><code>demo123</code>
+          <div className="demo-credentials">
+            <span><small>Patient</small><code>patient / patient123</code></span>
+            <span><small>Doctor</small><code>dr.sharma / doctor123</code></span>
+            <span><small>Lab</small><code>lab.tech / lab123</code></span>
           </div>
-          <p className="access-note">For authorized medical professionals only.</p>
+          <p className="auth-switch">New patient? <a href="/register">Create an account</a></p>
         </div>
         <p className="login-footer">Medora Clinical Workspace · {new Date().getFullYear()}</p>
       </section>

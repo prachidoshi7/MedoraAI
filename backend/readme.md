@@ -8,7 +8,8 @@ From the repo root:
 
 ```powershell
 cd backend
-pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu
+pip install torch==2.3.1 torchvision==0.18.1 --index-url https://download.pytorch.org/whl/cpu
+pip install -r requirements.txt
 ```
 
 ## Required Model Paths
@@ -17,7 +18,9 @@ The backend reads model paths from `.env` in the repo root:
 
 ```env
 CHEST_MODEL_PATH=./models/chest_xray_efficientnet_b4.pt
-BRAIN_MODEL_PATH=./models/brain_tumor_mobilenetv2.h5
+BRAIN_MODEL_PATH=./models/best_brain_model.keras
+LUNG_MODEL_PATH=./models/cnn_lung_model.pth
+KIDNEY_MODEL_PATH=./models/cnn_Kidney_Stone_model.pth
 ```
 
 Relative paths are resolved from the repo root by `backend/config.py`.
@@ -40,6 +43,8 @@ Expected model status:
 ```text
 chest_xray: loaded
 brain_mri: loaded
+lung_ct: loaded
+kidney_us: loaded
 ```
 
 ## Runtime Data
@@ -65,4 +70,12 @@ Configured in `.env`:
 ```env
 DEMO_USER=demo
 DEMO_PASSWORD=demo123
+```
+
+Additional seeded credentials:
+
+```text
+patient / patient123
+dr.sharma / doctor123
+lab.tech / lab123
 ```

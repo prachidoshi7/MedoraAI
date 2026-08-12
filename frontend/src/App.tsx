@@ -1,54 +1,78 @@
-import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
-import HistorySidebar from './components/HistorySidebar';
+import BookAppointment from './pages/BookAppointment';
+import CaseStudyView from './pages/CaseStudyView';
+import ConsultationPage from './pages/ConsultationPage';
+import DoctorDashboard from './pages/DoctorDashboard';
+import LabDashboard from './pages/LabDashboard';
+import LabUploadScan from './pages/LabUploadScan';
 import LoginPage from './pages/LoginPage';
+import PatientDashboard from './pages/PatientDashboard';
+import RegisterPage from './pages/RegisterPage';
 import ResultsPage from './pages/ResultsPage';
 import UploadPage from './pages/UploadPage';
+import type { UserRole } from './types';
 
-function PrivateRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated } = useAuth();
-  return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />;
+const homeByRole: Record<UserRole, string> = {
+  patient: '/patient/dashboard',
+  doctor: '/doctor/dashboard',
+  lab_tech: '/lab/dashboard',
+  admin: '/doctor/dashboard',
+};
+
+function ProtectedRoute({ roles, children }: { roles?: UserRole[]; children: React.ReactNode }) {
+  const { isAuthenticated, user } = useAuth();
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (roles && (!user || !roles.includes(user.role))) return <Navigate to={user ? homeByRole[user.role] : '/login'} replace />;
+  return <>{children}</>;
+}
+
+function HomeRedirect() {
+  const { isAuthenticated, user } = useAuth();
+  if (!isAuthenticated || !user) return <Navigate to="/login" replace />;
+  return <Navigate to={homeByRole[user.role]} replace />;
 }
 
 function Brand() {
-  return (
-    <span className="brand-lockup" aria-label="Medora AI Clinical Imaging">
-      <span className="brand-mark" aria-hidden="true" />
-      <span><strong>Medora</strong><small>AI clinical imaging</small></span>
-    </span>
-  );
+  return <span className="brand-lockup"><span className="brand-mark" /><span><strong>Medora</strong><small>Hospital intelligence</small></span></span>;
 }
 
+const navByRole: Record<UserRole, Array<{ path: string; label: string; icon: string }>> = {
+  patient: [
+    { path: '/patient/dashboard', label: 'My care', icon: '⌂' },
+    { path: '/patient/book-appointment', label: 'Book appointment', icon: '＋' },
+  ],
+  doctor: [
+    { path: '/doctor/dashboard', label: 'Clinical queue', icon: '⌂' },
+    { path: '/upload', label: 'Direct analysis', icon: '⌁' },
+  ],
+  lab_tech: [
+    { path: '/lab/dashboard', label: 'Lab worklist', icon: '⌂' },
+    { path: '/upload', label: 'Direct upload', icon: '⌁' },
+  ],
+  admin: [
+    { path: '/doctor/dashboard', label: 'Operations', icon: '⌂' },
+    { path: '/upload', label: 'Direct analysis', icon: '⌁' },
+  ],
+};
+
 function Navigation() {
-  const { isAuthenticated, logout, username } = useAuth();
+  const { isAuthenticated, logout, user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-
-  if (!isAuthenticated) return null;
-
-  const leave = () => {
-    logout();
-    navigate('/login');
-  };
-
+  if (!isAuthenticated || !user) return null;
+  const leave = () => { logout(); navigate('/login'); };
   return (
-    <aside className="site-sidebar">
-      <button className="brand-button" onClick={() => navigate('/upload')}><Brand /></button>
-      <button
-        className={`new-study-button${location.pathname === '/upload' ? ' active' : ''}`}
-        onClick={() => navigate('/upload')}
-      >
-        <span aria-hidden="true">＋</span> New scan
-      </button>
-
-      <div className="sidebar-history"><HistorySidebar /></div>
-
+    <aside className="site-sidebar hospital-sidebar">
+      <Link className="brand-button" to={homeByRole[user.role]}><Brand /></Link>
+      <div className="role-chip"><span>{user.role === 'lab_tech' ? 'LT' : user.role.slice(0, 1).toUpperCase()}</span><div><small>Workspace</small><strong>{user.role.replace('_', ' ')}</strong></div></div>
+      <nav className="role-navigation">
+        {navByRole[user.role].map((item) => <Link key={item.path} className={location.pathname === item.path ? 'active' : ''} to={item.path}><span>{item.icon}</span>{item.label}</Link>)}
+      </nav>
+      <div className="journey-map"><p className="eyebrow">Connected journey</p>{['Patient visit', 'Doctor consult', 'AI diagnostics', 'Clinical review', 'Final case'].map((label, index) => <div key={label}><span>{String(index + 1).padStart(2, '0')}</span><i /><strong>{label}</strong></div>)}</div>
       <footer className="sidebar-footer">
-        <div className="engine-status"><i /> Inference engine connected</div>
-        <div className="doctor-identity">
-          <span className="doctor-avatar">{username?.slice(0, 1).toUpperCase() || 'D'}</span>
-          <span><small>Signed in as</small>Dr. {username || 'Doctor'}</span>
-        </div>
+        <div className="engine-status"><i /> Hospital systems connected</div>
+        <div className="doctor-identity"><span className="doctor-avatar">{user.full_name?.slice(0, 1) || 'M'}</span><span><small>Signed in as</small>{user.full_name}</span></div>
         <button className="nav-signout" onClick={leave}>Sign out</button>
       </footer>
     </aside>
@@ -57,22 +81,30 @@ function Navigation() {
 
 function ApplicationFrame() {
   const { isAuthenticated } = useAuth();
-
   return (
     <div className={isAuthenticated ? 'app-shell' : 'auth-shell'}>
       <Navigation />
       <main className={isAuthenticated ? 'page-content' : 'page-content page-content--auth'}>
         <Routes>
+          <Route path="/" element={<HomeRedirect />} />
           <Route path="/login" element={<LoginPage />} />
-          <Route path="/upload" element={<PrivateRoute><UploadPage /></PrivateRoute>} />
-          <Route path="/results/:scanId" element={<PrivateRoute><ResultsPage /></PrivateRoute>} />
-          <Route path="*" element={<Navigate to="/upload" replace />} />
+          <Route path="/register" element={<RegisterPage />} />
+          <Route path="/patient/dashboard" element={<ProtectedRoute roles={['patient']}><PatientDashboard /></ProtectedRoute>} />
+          <Route path="/patient/book-appointment" element={<ProtectedRoute roles={['patient']}><BookAppointment /></ProtectedRoute>} />
+          <Route path="/patient/case-study/:caseStudyId" element={<ProtectedRoute roles={['patient']}><CaseStudyView /></ProtectedRoute>} />
+          <Route path="/doctor/dashboard" element={<ProtectedRoute roles={['doctor', 'admin']}><DoctorDashboard /></ProtectedRoute>} />
+          <Route path="/doctor/consultation/:appointmentId" element={<ProtectedRoute roles={['doctor', 'admin']}><ConsultationPage /></ProtectedRoute>} />
+          <Route path="/doctor/case-study/:caseStudyId" element={<ProtectedRoute roles={['doctor', 'admin']}><CaseStudyView /></ProtectedRoute>} />
+          <Route path="/lab/dashboard" element={<ProtectedRoute roles={['lab_tech', 'admin']}><LabDashboard /></ProtectedRoute>} />
+          <Route path="/lab/upload/:orderId" element={<ProtectedRoute roles={['lab_tech', 'admin']}><LabUploadScan /></ProtectedRoute>} />
+          <Route path="/lab/results/:scanId" element={<ProtectedRoute roles={['lab_tech', 'admin']}><ResultsPage /></ProtectedRoute>} />
+          <Route path="/upload" element={<ProtectedRoute roles={['doctor', 'lab_tech', 'admin']}><UploadPage /></ProtectedRoute>} />
+          <Route path="/results/:scanId" element={<ProtectedRoute><ResultsPage /></ProtectedRoute>} />
+          <Route path="*" element={<HomeRedirect />} />
         </Routes>
       </main>
     </div>
   );
 }
 
-export default function App() {
-  return <BrowserRouter><ApplicationFrame /></BrowserRouter>;
-}
+export default function App() { return <BrowserRouter><ApplicationFrame /></BrowserRouter>; }

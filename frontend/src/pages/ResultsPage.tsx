@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { getReport } from '../api/client';
+import { useAuth } from '../hooks/useAuth';
 import PatientReport from '../components/PatientReport';
 import ReportEditor from '../components/ReportEditor';
 import ResultPanel from '../components/ResultPanel';
@@ -19,9 +20,10 @@ function wait(ms: number) {
 export default function ResultsPage() {
   const { scanId } = useParams<{ scanId: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null);
   const [report, setReport] = useState<ReportData | null>(null);
-  const [tab, setTab] = useState<ReportTab>('doctor');
+  const [tab, setTab] = useState<ReportTab>(user?.role === 'patient' ? 'patient' : 'doctor');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -31,7 +33,7 @@ export default function ResultsPage() {
 
     setLoading(true);
     setError('');
-    setTab('doctor');
+    setTab(user?.role === 'patient' ? 'patient' : 'doctor');
 
     const stored = sessionStorage.getItem(`analysis_${scanId}`);
     let storedAnalysis: AnalysisResponse | null = null;
@@ -102,7 +104,7 @@ export default function ResultsPage() {
     return () => {
       cancelled = true;
     };
-  }, [scanId]);
+  }, [scanId, user?.role]);
 
   if (loading) {
     return (
@@ -146,14 +148,14 @@ export default function ResultsPage() {
     );
   }
 
-  const studyLabel = analysis.scan_type === 'brain_mri' ? 'Brain MRI' : 'Chest X-ray';
+  const studyLabel = ({ brain_mri: 'Brain MRI', chest_xray: 'Chest X-ray', lung_ct: 'Lung CT', kidney_us: 'Kidney ultrasound' } as Record<string, string>)[analysis.scan_type] || 'Imaging';
   const created = report.generated_at ? new Date(report.generated_at) : null;
 
   return (
     <div className="workspace-page results-page">
       <header className="case-header">
         <div>
-          <button className="back-link" onClick={() => navigate('/upload')}>← Dashboard</button>
+          <button className="back-link" onClick={() => navigate(user?.role === 'patient' ? '/patient/dashboard' : user?.role === 'lab_tech' ? '/lab/dashboard' : '/doctor/dashboard')}>← Dashboard</button>
           <p className="eyebrow">Case {scanId.slice(0, 8).toUpperCase()}</p>
           <h1>{studyLabel} <em>review.</em></h1>
         </div>
@@ -165,14 +167,14 @@ export default function ResultsPage() {
       </header>
 
       <div className="report-tabbar" role="tablist" aria-label="Report audience">
-        <button
+        {user?.role !== 'patient' && <button
           role="tab"
           aria-selected={tab === 'doctor'}
           className={tab === 'doctor' ? 'active' : ''}
           onClick={() => setTab('doctor')}
         >
           <span>01</span><strong>Doctor report</strong><small>Detailed clinical review</small>
-        </button>
+        </button>}
         <button
           role="tab"
           aria-selected={tab === 'patient'}

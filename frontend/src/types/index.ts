@@ -5,14 +5,34 @@
 
 /* ── Auth ── */
 export interface LoginRequest { username: string; password: string; }
+export type UserRole = 'patient' | 'doctor' | 'lab_tech' | 'admin';
+export interface UserSummary {
+  id: number;
+  username: string;
+  role: UserRole;
+  full_name: string;
+  email: string;
+  phone: string;
+  specialization: string;
+  department_id: number | null;
+  department_name: string | null;
+}
 export interface LoginResponse {
   access_token: string;
   token_type: string;
   expires_in: number;
+  user: UserSummary;
+}
+export interface RegisterRequest {
+  username: string;
+  password: string;
+  full_name: string;
+  email?: string;
+  phone?: string;
 }
 
 /* ── Scan Types ── */
-export type ScanType = 'chest_xray' | 'brain_mri';
+export type ScanType = 'chest_xray' | 'brain_mri' | 'lung_ct' | 'kidney_us';
 
 export interface ScanTypeConfig {
   id: ScanType;
@@ -40,6 +60,22 @@ export const SCAN_TYPES: ScanTypeConfig[] = [
     description: '4-class tumor classification with visual explainability',
     classes: 'Glioma, Meningioma, No Tumor, Pituitary',
   },
+  {
+    id: 'lung_ct',
+    label: 'Lung CT',
+    icon: '◌',
+    model: '5-class CNN',
+    description: 'Lung lesion and carcinoma category analysis',
+    classes: 'Benign, Normal, Adenocarcinoma, Large Cell Carcinoma, Squamous Cell Carcinoma',
+  },
+  {
+    id: 'kidney_us',
+    label: 'Kidney Ultrasound',
+    icon: '◇',
+    model: 'Renal CNN',
+    description: 'Renal stone screening with visual explainability',
+    classes: 'Normal, Stone',
+  },
 ];
 
 /* ── Scan Upload ── */
@@ -48,6 +84,83 @@ export interface UploadResponse {
   filename: string;
   scan_type: ScanType;
   status: string;
+}
+
+/* ── Hospital Workflow ── */
+export interface Department {
+  id: number;
+  name: string;
+  description: string;
+  icon: string;
+}
+
+export interface Doctor extends UserSummary { department: Department | null; }
+export type AppointmentStatus = 'requested' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
+export interface Appointment {
+  id: number;
+  patient: UserSummary;
+  doctor: UserSummary;
+  department: Department | null;
+  status: AppointmentStatus;
+  reason: string;
+  notes: string;
+  scheduled_at: string | null;
+  created_at: string | null;
+  diagnostic_order_count: number;
+}
+
+export type DiagnosticStatus = 'ordered' | 'assigned' | 'in_progress' | 'completed' | 'reviewed';
+export interface DiagnosticOrder {
+  id: number;
+  appointment_id: number;
+  patient: UserSummary;
+  ordering_doctor: UserSummary;
+  assigned_lab_tech: UserSummary | null;
+  scan_type: ScanType;
+  organ: string;
+  priority: 'routine' | 'urgent' | 'stat';
+  status: DiagnosticStatus;
+  clinical_notes: string;
+  scan_id: string | null;
+  created_at: string | null;
+}
+
+export interface Medication {
+  name: string;
+  dosage: string;
+  frequency: string;
+  duration: string;
+}
+
+export interface Prescription {
+  id: number;
+  appointment_id: number;
+  doctor: UserSummary;
+  patient: UserSummary;
+  scan_id: string | null;
+  medications: Medication[];
+  instructions: string;
+  diagnosis: string;
+  created_at: string | null;
+}
+
+export interface CaseStudy {
+  id: number;
+  patient: UserSummary;
+  appointment_id: number | null;
+  chief_complaint: string;
+  clinical_history: string;
+  diagnostic_findings: string;
+  scan_ids: string[];
+  diagnosis: string;
+  treatment_plan: string;
+  prescriptions: Prescription[];
+  follow_up_plan: string;
+  doctor_notes: string;
+  status: 'draft' | 'preliminary' | 'final';
+  preliminary_at: string | null;
+  finalized_at: string | null;
+  created_at: string | null;
 }
 
 /* ── Classification ── */

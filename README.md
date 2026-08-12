@@ -1,6 +1,6 @@
 # MedoraAI
 
-MedoraAI is a full-stack medical-imaging decision-support application for chest radiographs and brain MRI images. It combines local image classifiers, Grad-CAM explainability, strict pre-inference scan validation, structured clinician reports, patient-friendly explanations, translation, history, and PDF export in one workflow.
+MedoraAI is a multi-role hospital diagnostic workflow platform connecting patients, doctors, lab technicians, and explainable AI. It covers appointment booking, consultation, diagnostic ordering, scan analysis, doctor sign-off, prescriptions, native-language patient communication, and final case-study export.
 
 > **Clinical safety notice:** MedoraAI is an experimental decision-support project, not a certified medical device. Its output is preliminary and must be reviewed against the complete source examination by a qualified clinician. Do not use it as the sole basis for diagnosis or treatment.
 
@@ -8,6 +8,10 @@ MedoraAI is a full-stack medical-imaging decision-support application for chest 
 
 - Chest X-ray multi-label classification with EfficientNet-B4 and 15 NIH ChestX-ray14-compatible labels
 - Four-class brain MRI classification with EfficientNetB3: Glioma, Meningioma, No Tumor, and Pituitary
+- Five-class lung CT classification and kidney ultrasound stone screening using the bundled PyTorch models
+- Patient, doctor, and lab-technician portals with role-bearing JWT authentication
+- Department/doctor selection, scheduled appointment requests, clinical notes, and lab diagnostic orders
+- Doctor report review/release, prescriptions, specialist forwarding, and complete case-study PDFs
 - Grad-CAM/Grad-CAM++ heatmaps generated from the diagnostic models
 - Local-first scan-type verification that rejects obvious screenshots, documents, mismatched anatomy, and unusable images before diagnostic inference
 - Independent vision-service fallback for ambiguous chest-versus-brain verification
@@ -37,15 +41,12 @@ MedoraAI is a full-stack medical-imaging decision-support application for chest 
 ```text
 MedoraAI/
 ├── backend/                 FastAPI application, classifiers and tests
-│   ├── routers/             Authentication, scan, report and history routes
+│   ├── routers/             Auth, appointment, diagnostic, report and case routes
 │   ├── services/            Models, validation, Grad-CAM, reports and PDF
 │   ├── templates/           Text/HTML report templates
 │   └── tests/               Validation, report and PDF regression tests
 ├── frontend/                React and TypeScript user interface
-├── models/                  Local model artifacts and model instructions
-├── files/                   Training notebooks and supporting files
-├── docs/                    Plans, guides and project documentation
-├── tools/                   Evaluation and utility scripts
+├── models/                  Runtime model artifacts and model instructions
 ├── .env.example             Safe environment-variable template
 └── docker-compose.yml       Local container deployment
 ```
@@ -58,16 +59,18 @@ Place the current model artifacts in `models/`:
 models/chest_xray_efficientnet_b4.pt
 models/chest_xray_efficientnet_b4.labels.json
 models/best_brain_model.keras
+models/cnn_lung_model.pth
+models/cnn_Kidney_Stone_model.pth
 ```
 
-`best_brain_model.keras` is intentionally ignored because it is larger than GitHub's normal per-file limit. Copy it locally, store it in Git LFS, or attach it to a private release. The tracked `brain_tumor_mobilenetv2.h5` file is a legacy artifact and is not the current EfficientNetB3 model.
+All four runtime model binaries are versioned with Git LFS. Install Git LFS before cloning so the real model files—not only their small pointer files—are downloaded. GitHub blocks ordinary Git objects above 100 MiB, while LFS supports the 198.6 MiB Brain MRI model.
 
 ## Prerequisites
 
 - Python 3.11 recommended
 - Node.js 20.19+ or Node.js 22.12+
 - PowerShell on Windows
-- Git and GitHub CLI for repository publishing
+- Git, Git LFS, and GitHub CLI for repository publishing
 - Optional: Docker Desktop
 
 ## Local Setup
@@ -77,6 +80,7 @@ Clone and enter the repository:
 ```powershell
 git clone https://github.com/prachidoshi7/MedoraAI.git
 cd MedoraAI
+git lfs pull
 ```
 
 Create your local environment file:
@@ -86,13 +90,15 @@ Copy-Item .env.example .env
 notepad .env
 ```
 
-At minimum, set a strong `SECRET_KEY`, the two model paths, and the API keys needed by your deployment:
+At minimum, set a strong `SECRET_KEY` and the API keys needed by your deployment. Bundled model paths already have safe defaults:
 
 ```env
 SECRET_KEY=replace-with-a-long-random-secret
 
 CHEST_MODEL_PATH=./models/chest_xray_efficientnet_b4.pt
 BRAIN_MODEL_PATH=./models/best_brain_model.keras
+LUNG_MODEL_PATH=./models/cnn_lung_model.pth
+KIDNEY_MODEL_PATH=./models/cnn_Kidney_Stone_model.pth
 
 GROQ_API_KEY=
 GEMINI_API_KEY=
@@ -108,7 +114,8 @@ cd backend
 py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
-pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu
+pip install torch==2.3.1 torchvision==0.18.1 --index-url https://download.pytorch.org/whl/cpu
+pip install -r requirements.txt
 cd ..
 ```
 
@@ -139,11 +146,16 @@ npm run dev -- --host 127.0.0.1 --port 5173
 
 Open `http://127.0.0.1:5173`.
 
-Default development login:
+The API starts without external LLM keys by using its grounded template report
+fallback. A Git/LFS clone includes all four diagnostic models.
+
+Role-specific development logins:
 
 ```text
-Username: demo
-Password: demo123
+Patient: patient / patient123
+Doctor: dr.sharma / doctor123
+Lab technician: lab.tech / lab123
+Legacy clinician: demo / demo123
 ```
 
 Change the demo credentials before sharing or deploying the application.

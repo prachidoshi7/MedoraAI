@@ -22,6 +22,7 @@ from db.database import get_db, get_session_factory
 from db import crud
 from models.schemas import UploadResponse, AnalysisResponse, ClassificationDetail, LocalizationDetail, BoundingBox
 from routers.auth import get_current_user
+from routers.workflow_utils import ensure_scan_access
 from services.scan_type_verifier import ScanTypeVerification
 
 logger = logging.getLogger(__name__)
@@ -69,6 +70,10 @@ def _detect_modality(scan_type: str, filename: str) -> str:
     """Detect imaging modality from scan type and filename."""
     if scan_type == "brain_mri":
         return "MRI"
+    if scan_type == "lung_ct":
+        return "CT"
+    if scan_type == "kidney_us":
+        return "Ultrasound"
     ext = os.path.splitext(filename)[1].lower()
     if ext == ".dcm":
         return "DICOM"
@@ -266,6 +271,7 @@ async def upload_scan(
     request: Request,
     file: UploadFile = File(...),
     scan_type: str = Form(default="chest_xray"),
+    diagnostic_order_id: Optional[int] = Form(default=None),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
@@ -274,16 +280,39 @@ async def upload_scan(
     
     Args:
         file: Image file (PNG/JPEG/DICOM)
-        scan_type: "chest_xray" or "brain_mri"
+        scan_type: chest_xray, brain_mri, lung_ct, or kidney_us
     """
+    if getattr(current_user, "role", "doctor") not in {"doctor", "lab_tech", "admin"}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only doctors and lab technicians can upload diagnostic scans",
+        )
     _validate_file(file)
 
     # Validate scan_type
-    if scan_type not in ("chest_xray", "brain_mri"):
+    supported_scan_types = ("chest_xray", "brain_mri", "lung_ct", "kidney_us")
+    if scan_type not in supported_scan_types:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="scan_type must be 'chest_xray' or 'brain_mri'",
+            detail=f"scan_type must be one of: {', '.join(supported_scan_types)}",
         )
+
+    diagnostic_order = None
+    if diagnostic_order_id is not None:
+        diagnostic_order = crud.get_diagnostic_order(db, diagnostic_order_id)
+        if not diagnostic_order:
+            raise HTTPException(status_code=404, detail="Diagnostic order not found")
+        if diagnostic_order.scan_type != scan_type:
+            raise HTTPException(status_code=400, detail="Scan type does not match the diagnostic order")
+        if diagnostic_order.scan_id:
+            raise HTTPException(status_code=409, detail="A scan is already linked to this order")
+        if current_user.role == "lab_tech":
+            if diagnostic_order.assigned_lab_tech_id not in {None, current_user.id}:
+                raise HTTPException(status_code=403, detail="Order is assigned to another technician")
+            if diagnostic_order.assigned_lab_tech_id is None:
+                crud.assign_lab_tech(db, diagnostic_order, current_user.id)
+        elif current_user.role != "admin" and diagnostic_order.ordering_doctor_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Access denied")
 
     # Read file bytes
     file_bytes = await file.read()
@@ -324,7 +353,7 @@ async def upload_scan(
 
     _validate_scan_matches_selected_type(image, scan_type, modality)
 
-    if settings.STRICT_SCAN_TYPE_VALIDATION:
+    if settings.STRICT_SCAN_TYPE_VALIDATION and scan_type in {"chest_xray", "brain_mri"}:
         verifier = getattr(request.app.state, "scan_type_verifier", None)
         if verifier is None:
             raise HTTPException(
@@ -362,14 +391,17 @@ async def upload_scan(
     scan = crud.create_scan(
         db=db,
         scan_id=scan_id,
-        user_id=current_user.id,
+        user_id=(diagnostic_order.appointment.patient_id if diagnostic_order else current_user.id),
         filename=filename,
         scan_type=scan_type,
         modality=modality,
         file_path=file_path,
         thumbnail_path=thumbnail_path,
         file_size_bytes=file_size,
+        lab_tech_id=current_user.id if current_user.role == "lab_tech" else None,
     )
+    if diagnostic_order:
+        crud.link_scan_to_order(db, diagnostic_order, scan)
 
     logger.info(f"Scan uploaded: {scan_id[:8]} ({scan_type}, {file_size} bytes)")
 
@@ -409,8 +441,9 @@ async def analyze_scan(
             detail=f"Scan with ID {scan_id[:8]} not found",
         )
 
-    if scan.user_id != current_user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    ensure_scan_access(current_user, scan)
+    if getattr(current_user, "role", "doctor") not in {"doctor", "lab_tech", "admin"}:
+        raise HTTPException(status_code=403, detail="Only clinical staff can run analysis")
 
     # Update status
     crud.update_scan_status(db, scan_id, "analyzing")
@@ -436,6 +469,7 @@ async def analyze_scan(
                     scan_type=scan.scan_type,
                     modality=scan.modality,
                     image=image,
+                    patient_id=str(scan.user_id),
                 ),
                 name=f"report-{scan_id[:8]}",
             )
@@ -452,11 +486,46 @@ async def analyze_scan(
                     scan_type=scan.scan_type,
                     modality=scan.modality,
                     image=image,
+                    patient_id=str(scan.user_id),
                 ),
                 name=f"report-{scan_id[:8]}",
             )
             heatmap_overlay, bboxes = await asyncio.to_thread(
                 _localize_brain_mri, request, image, classification_result
+            )
+        elif scan.scan_type == "lung_ct":
+            classification_result = await asyncio.to_thread(
+                _classify_lung_ct, request, image
+            )
+            report_task = asyncio.create_task(
+                request.app.state.report_engine.generate_report(
+                    result=classification_result,
+                    scan_type=scan.scan_type,
+                    modality=scan.modality,
+                    image=image,
+                    patient_id=str(scan.user_id),
+                ),
+                name=f"report-{scan_id[:8]}",
+            )
+            heatmap_overlay, bboxes = await asyncio.to_thread(
+                _localize_lung_ct, request, image, classification_result
+            )
+        elif scan.scan_type == "kidney_us":
+            classification_result = await asyncio.to_thread(
+                _classify_kidney_us, request, image
+            )
+            report_task = asyncio.create_task(
+                request.app.state.report_engine.generate_report(
+                    result=classification_result,
+                    scan_type=scan.scan_type,
+                    modality=scan.modality,
+                    image=image,
+                    patient_id=str(scan.user_id),
+                ),
+                name=f"report-{scan_id[:8]}",
+            )
+            heatmap_overlay, bboxes = await asyncio.to_thread(
+                _localize_kidney_us, request, image, classification_result
             )
         else:
             raise ValueError(f"Unknown scan type: {scan.scan_type}")
@@ -484,6 +553,7 @@ async def analyze_scan(
             bounding_boxes=bboxes,
             analysis_time_ms=analysis_time_ms,
         )
+        crud.complete_order_for_scan(db, scan_id)
 
         # Do not hold the analysis response open for the report. The report task
         # already overlaps Grad-CAM and is persisted after the response is sent.
@@ -576,6 +646,28 @@ def _localize_brain_mri(request: Request, image: Image.Image, result):
     bboxes = gradcam.heatmap_to_bboxes(raw_cam, threshold=0.5)
 
     return heatmap_overlay, bboxes
+
+
+def _classify_lung_ct(request: Request, image: Image.Image):
+    classifier = getattr(request.app.state, "lung_classifier", None)
+    if classifier is None:
+        raise RuntimeError("Lung CT model is unavailable")
+    return classifier.predict(image)
+
+
+def _localize_lung_ct(request: Request, image: Image.Image, result):
+    return request.app.state.lung_gradcam.generate(image, result.heatmap_target_idx)
+
+
+def _classify_kidney_us(request: Request, image: Image.Image):
+    classifier = getattr(request.app.state, "kidney_classifier", None)
+    if classifier is None:
+        raise RuntimeError("Kidney ultrasound model is unavailable")
+    return classifier.predict(image)
+
+
+def _localize_kidney_us(request: Request, image: Image.Image, result):
+    return request.app.state.kidney_gradcam.generate(image, result.heatmap_target_idx)
 
 
 async def _store_generated_report(report_task, scan_id: str) -> None:
