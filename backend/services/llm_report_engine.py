@@ -44,11 +44,14 @@ GROUNDING RULES:
 - If image and classifier disagree, say the examination is indeterminate and explain what confirmatory review is needed.
 - Use concise radiology language. Do not discuss model architecture, provider names, prompts, confidence percentages, or heatmaps in the clinical prose.
 - Do not mention the classifier, automated analysis, model agreement, concordance, confidence, or Grad-CAM anywhere in the clinical sections. Those results are displayed separately.
+- Findings must contain observations only, organized by anatomic system. Do not place diagnoses, differential weighting, or management advice in findings.
+- Put diagnostic conclusions only in impression, ordered and numbered by clinical priority. Keep the separate differential section brief and consistent with that impression.
+- When a finding can be measured from the available image, use a specific numeric measurement with units. Never substitute vague size language such as "large," "significant," or "substantial."
 - For a brain MRI image with unknown sequence and contrast status, never describe enhancement, restricted diffusion, ADC, FLAIR, T1/T2 signal, susceptibility, perfusion, or contrast uptake as an observed finding.
 - Put the most clinically important supported conclusion first in impression. Number multiple impressions.
 - Differential diagnosis must be short and evidence-based. Use "None based on the supplied image" when no differential is supported.
 - Recommendations must follow from the observed finding and limitations. Do not recommend biopsy, surgery, emergency treatment, or disease-specific laboratory testing solely from a classifier label.
-- critical_communication must be "No critical communication generated" unless the supplied image clearly demonstrates an immediately dangerous finding.
+- critical_communication must be "Not applicable — no critical or emergent finding requiring direct communication" unless the supplied image clearly demonstrates an immediately dangerous finding. For an urgent finding, document the recipient, method, date, and time when those details are available; never invent them.
 
 You MUST output ONLY valid JSON with exactly these nine string keys:
 {
@@ -59,7 +62,7 @@ You MUST output ONLY valid JSON with exactly these nine string keys:
   "impression": "Numbered prioritized conclusions",
   "differential_diagnosis": "Brief supported differential or none",
   "recommendations": "Actionable next steps proportional to the evidence",
-  "critical_communication": "Critical result communication status",
+  "critical_communication": "Critical communication record, or the routine N/A statement",
   "patient_explanation": "Four short plain-English paragraphs explaining the supported conclusion, meaning, next step, and limitations without model terms or confidence scores"
 }
 
@@ -639,7 +642,7 @@ ADDITIONAL SAFETY REQUIREMENTS:
             "impression": impression,
             "differential_diagnosis": differential,
             "recommendations": recommendations,
-            "critical_communication": "No critical communication generated.",
+            "critical_communication": "Not applicable — no critical or emergent finding requiring direct communication.",
             "patient_explanation": "",
         }
 
@@ -920,7 +923,7 @@ ADDITIONAL SAFETY REQUIREMENTS:
             "impression": "No impression was generated.",
             "differential_diagnosis": "None based on the supplied image.",
             "recommendations": "Clinical correlation and direct image review are recommended.",
-            "critical_communication": "No critical communication generated.",
+            "critical_communication": "Not applicable — no critical or emergent finding requiring direct communication.",
             "patient_explanation": "",
         }
         return {
@@ -1070,7 +1073,9 @@ ADDITIONAL SAFETY REQUIREMENTS:
                 "Review the complete source examination and correlate with the clinical presentation."
             )
         if not str(grounded.get("critical_communication") or "").strip():
-            grounded["critical_communication"] = "No critical communication generated."
+            grounded["critical_communication"] = (
+                "Not applicable — no critical or emergent finding requiring direct communication."
+            )
 
         for field in ("findings", "impression", "differential_diagnosis"):
             cleaned = cls._sanitize_generated_clinical_text(

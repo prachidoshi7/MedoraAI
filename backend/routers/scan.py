@@ -542,10 +542,11 @@ def _analyze_brain_mri(request: Request, image: Image.Image, scan_id: str):
 
     # Generate Grad-CAM heatmap
     preprocessed = classifier.preprocess(image)
-    heatmap_overlay = gradcam.generate_heatmap(image, preprocessed)
+    # Generate the overlay and localization map together so the expensive
+    # multi-layer gradient calculation runs only once.
+    heatmap_overlay, raw_cam = gradcam.generate_heatmap_and_raw(image, preprocessed)
 
     # Extract bounding boxes
-    raw_cam = gradcam.generate_raw_cam(preprocessed)
     bboxes = gradcam.heatmap_to_bboxes(raw_cam, threshold=0.5)
 
     return result, heatmap_overlay, bboxes

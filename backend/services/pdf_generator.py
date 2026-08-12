@@ -130,7 +130,7 @@ class PDFGenerator:
             leftMargin=17 * mm,
             topMargin=25 * mm,
             bottomMargin=19 * mm,
-            title=f"MedoraAI Clinical Imaging Report {report_id}",
+            title=f"MedoraAI Preliminary Imaging Interpretation {report_id}",
             author="MedoraAI",
             subject="Preliminary clinical imaging report",
         )
@@ -203,8 +203,8 @@ class PDFGenerator:
             canvas.restoreState()
 
         story = [
-            Paragraph("Clinical Imaging Report", title_style),
-            Paragraph("STRUCTURED PRELIMINARY INTERPRETATION FOR CLINICIAN REVIEW", subtitle_style),
+            Paragraph("Preliminary Imaging Interpretation", title_style),
+            Paragraph("STRUCTURED RADIOLOGY DRAFT  /  CLINICIAN REVIEW REQUIRED", subtitle_style),
         ]
 
         scan_label = "Brain MRI" if report_data.get("scan_type") == "brain_mri" else "Chest radiograph"
@@ -255,8 +255,6 @@ class PDFGenerator:
             ("TOPPADDING", (0, 0), (-1, -1), 6),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
         ]))
-        story.extend([summary, Spacer(1, 6)])
-
         def add_section(title: str, value, emphasized: bool = False):
             paragraph_style = impression_style if emphasized else body_style
             block = [
@@ -272,9 +270,23 @@ class PDFGenerator:
         add_section("Image quality / study limitations", report_data.get("image_quality", "Not provided."))
         add_section("Findings", report_data.get("findings", "Not available."))
         add_section("Impression", report_data.get("impression", "Not available."), emphasized=True)
-        add_section("Differential diagnosis", report_data.get("differential_diagnosis", "None stated."))
+        add_section("Differential considerations", report_data.get("differential_diagnosis", "None stated."))
         add_section("Recommendations", report_data.get("recommendations", "Clinical correlation recommended."))
-        add_section("Critical communication", report_data.get("critical_communication", "No critical communication generated."))
+        add_section(
+            "Communication",
+            report_data.get(
+                "critical_communication",
+                "Not applicable — no critical or emergent finding requiring direct communication.",
+            ),
+        )
+
+        story.extend([
+            Spacer(1, 10),
+            Paragraph("DECISION-SUPPORT APPENDIX", section_style),
+            HRFlowable(width="100%", thickness=0.7, color=teal, spaceAfter=7),
+            summary,
+            Spacer(1, 6),
+        ])
 
         if heatmap_path and os.path.exists(heatmap_path):
             from PIL import Image as PILImage
@@ -398,7 +410,7 @@ class PDFGenerator:
         This keeps local Windows demos working when WeasyPrint/Pango is unavailable.
         """
         lines = [
-            "MedoraAI Clinical Decision-Support Report",
+            "MedoraAI Preliminary Imaging Interpretation",
             f"Report ID: {scan_id[:8].upper()}",
             f"Patient ID: {report_data.get('patient_id', 'DEMO-001')}",
             f"Scan Date: {report_data.get('scan_date', '')}",
@@ -426,13 +438,13 @@ class PDFGenerator:
             "Impression",
             report_data.get("impression", ""),
             "",
-            "Differential Diagnosis",
+            "Differential Considerations",
             report_data.get("differential_diagnosis", ""),
             "",
             "Recommendations",
             report_data.get("recommendations", ""),
             "",
-            "Critical Communication",
+            "Communication",
             report_data.get("critical_communication", ""),
             "",
             "Disclaimer",

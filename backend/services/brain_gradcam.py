@@ -56,13 +56,18 @@ class BrainGradCAM:
         if self.model is None:
             logger.warning("BrainGradCAM initialized without a model. Heatmaps will be blank.")
             self._target_layers = []
+            self._grad_models = {}
+            self._classifier_layer = None
             return
 
         # Validate target layers exist in the model
         # EfficientNetB3 Functional model has all layers at top level
         self._target_layers = []
 
-        for target_name in [self.PRIMARY_TARGET, self.SECONDARY_TARGET]:
+        # The deeper layer is class-specific and produced stable localization
+        # in validation. The earlier block6 layer was dominated by repeating
+        # edge/texture activations rather than the predicted tumor class.
+        for target_name in [self.PRIMARY_TARGET]:
             try:
                 self.model.get_layer(target_name)
                 self._target_layers.append(target_name)
@@ -72,6 +77,32 @@ class BrainGradCAM:
         if not self._target_layers:
             # Fallback: find any conv/activation layer with reasonable spatial dims
             self._target_layers = [self._find_best_conv_layer()]
+
+        # The saved model ends in a float32 Dense softmax fed by a
+        # mixed-float16 EfficientNet backbone. Differentiate pre-softmax logits
+        # for explanations so confident predictions do not collapse the CAM.
+        self._classifier_layer = self.model.layers[-1]
+        if not isinstance(self._classifier_layer, tf.keras.layers.Dense):
+            logger.warning(
+                "Final brain classifier layer is %s, not Dense; Grad-CAM will "
+                "fall back to model-output scores.",
+                type(self._classifier_layer).__name__,
+            )
+
+        # Reuse the gradient sub-models across requests instead of rebuilding
+        # them for every target layer and every CAM calculation.
+        self._grad_models = {}
+        for target_name in self._target_layers:
+            target_layer = self.model.get_layer(target_name)
+            score_input = (
+                self._classifier_layer.input
+                if isinstance(self._classifier_layer, tf.keras.layers.Dense)
+                else self.model.output
+            )
+            self._grad_models[target_name] = tf.keras.Model(
+                inputs=self.model.input,
+                outputs=[target_layer.output, score_input],
+            )
 
         logger.info(f"BrainGradCAM++ targeting layers: {self._target_layers}")
 
@@ -94,7 +125,7 @@ class BrainGradCAM:
 
         return best_layer or self.model.layers[-1].name
 
-    def _compute_gradcampp_for_layer(
+    def _legacy_compute_gradcampp_for_layer(
         self,
         preprocessed_input: np.ndarray,
         target_layer_name: str,
@@ -192,6 +223,89 @@ class BrainGradCAM:
         # Explicit float32 — model trained with mixed_float16 produces float16 tensors,
         # and OpenCV's cv2.resize cannot handle float16 arrays.
         return heatmap.numpy().astype(np.float32)  # (H, W)
+
+    def _compute_gradcampp_for_layer(
+        self,
+        preprocessed_input: np.ndarray,
+        target_layer_name: str,
+        target_class_idx: int = None,
+    ) -> np.ndarray:
+        """Compute a numerically stable, logit-targeted Grad-CAM++ map."""
+        tf = self.tf
+        grad_model = self._grad_models.get(target_layer_name)
+        if grad_model is None:
+            logger.warning("Layer %s is unavailable for Grad-CAM", target_layer_name)
+            return np.zeros((9, 9), dtype=np.float32)
+
+        inputs = tf.cast(preprocessed_input, tf.float32)
+        with tf.GradientTape() as tape:
+            conv_outputs, score_input = grad_model(inputs, training=False)
+            tape.watch(conv_outputs)
+
+            if isinstance(self._classifier_layer, tf.keras.layers.Dense):
+                # Reconstruct the final Dense layer without softmax and keep
+                # the score arithmetic in float32.
+                scores = tf.linalg.matmul(
+                    tf.cast(score_input, tf.float32),
+                    tf.cast(self._classifier_layer.kernel, tf.float32),
+                )
+                if self._classifier_layer.bias is not None:
+                    scores = tf.nn.bias_add(
+                        scores, tf.cast(self._classifier_layer.bias, tf.float32)
+                    )
+            else:
+                scores = tf.cast(score_input, tf.float32)
+
+            class_idx = (
+                tf.argmax(scores[0], output_type=tf.int32)
+                if target_class_idx is None
+                else tf.cast(target_class_idx, tf.int32)
+            )
+            score = tf.gather(scores, class_idx, axis=1)
+
+        grads = tape.gradient(score, conv_outputs)
+        if grads is None:
+            logger.warning("First-order gradients are None for %s", target_layer_name)
+            return np.zeros((9, 9), dtype=np.float32)
+
+        activations = tf.cast(conv_outputs[0], tf.float32)
+        grads = tf.cast(grads[0], tf.float32)
+
+        # First-gradient Grad-CAM++ formulation. The old nested-tape version
+        # treated an aggregated second derivative as an element-wise one and
+        # collapsed valid gradients to zero for this mixed-precision model.
+        grads_2 = tf.square(grads)
+        grads_3 = grads_2 * grads
+        denominator = 2.0 * grads_2 + tf.reduce_sum(
+            activations * grads_3, axis=(0, 1), keepdims=True
+        )
+        alpha = tf.math.divide_no_nan(grads_2, denominator)
+        alpha = tf.math.divide_no_nan(
+            alpha,
+            tf.reduce_sum(alpha, axis=(0, 1), keepdims=True),
+        )
+        weights = tf.reduce_sum(alpha * tf.nn.relu(grads), axis=(0, 1))
+        heatmap = tf.nn.relu(tf.reduce_sum(activations * weights, axis=-1))
+
+        heatmap_max = float(tf.reduce_max(heatmap).numpy())
+        if not np.isfinite(heatmap_max) or heatmap_max <= 1e-8:
+            # A standard logit Grad-CAM is the safe fallback for class/layer
+            # pairs without stable positive Grad-CAM++ support.
+            standard_weights = tf.reduce_mean(grads, axis=(0, 1))
+            heatmap = tf.nn.relu(
+                tf.reduce_sum(activations * standard_weights, axis=-1)
+            )
+            heatmap_max = float(tf.reduce_max(heatmap).numpy())
+
+        if not np.isfinite(heatmap_max) or heatmap_max <= 1e-8:
+            logger.warning(
+                "No positive Grad-CAM signal for layer %s and class %s",
+                target_layer_name,
+                int(class_idx.numpy()),
+            )
+            return np.zeros(tuple(activations.shape[:2]), dtype=np.float32)
+
+        return (heatmap / heatmap_max).numpy().astype(np.float32)
 
     def _fuse_multiscale_cams(
         self,
@@ -316,6 +430,109 @@ class BrainGradCAM:
         )
 
         return overlay  # (HEATMAP_SIZE, HEATMAP_SIZE, 3) uint8
+
+    def generate_heatmap_and_raw(
+        self,
+        image: Image.Image,
+        preprocessed_input: np.ndarray,
+        target_class_idx: int = None,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Generate the display overlay and raw CAM with one gradient pass."""
+        if self.model is None:
+            return self._blank_overlay(image), np.zeros((260, 260), dtype=np.float32)
+
+        try:
+            classifier_cam = self._fuse_multiscale_cams(
+                preprocessed_input,
+                output_size=260,
+                target_class_idx=target_class_idx,
+            )
+            classifier_cam = self._smooth_cam(classifier_cam, sigma=1.5)
+            projected_cam = self._project_cam_to_original(classifier_cam, image)
+            raw_cam = cv2.resize(
+                projected_cam, (260, 260), interpolation=cv2.INTER_CUBIC
+            )
+            raw_cam = np.clip(raw_cam, 0.0, 1.0).astype(np.float32)
+        except Exception as exc:
+            logger.warning(
+                "Grad-CAM++ computation failed: %s. Returning blank overlay.", exc
+            )
+            return self._blank_overlay(image), np.zeros((260, 260), dtype=np.float32)
+
+        display_cam = cv2.resize(
+            projected_cam,
+            (self.HEATMAP_SIZE, self.HEATMAP_SIZE),
+            interpolation=cv2.INTER_CUBIC,
+        )
+        display_cam = np.clip(display_cam, 0.0, 1.0)
+        heatmap_colored = cv2.applyColorMap(
+            np.uint8(255 * display_cam), cv2.COLORMAP_JET
+        )
+        heatmap_colored = cv2.cvtColor(heatmap_colored, cv2.COLOR_BGR2RGB)
+
+        img_resized = image.resize((self.HEATMAP_SIZE, self.HEATMAP_SIZE)).convert("RGB")
+        img_array = np.asarray(img_resized, dtype=np.float32)
+        overlay = np.clip(
+            0.6 * img_array + 0.4 * heatmap_colored.astype(np.float32),
+            0,
+            255,
+        ).astype(np.uint8)
+
+        logger.info(
+            "Grad-CAM++ generated (max=%.3f, mean=%.3f, layers=%s)",
+            float(raw_cam.max()),
+            float(raw_cam.mean()),
+            self._target_layers,
+        )
+        return overlay, raw_cam
+
+    @staticmethod
+    def _project_cam_to_original(cam: np.ndarray, image: Image.Image) -> np.ndarray:
+        """Undo classifier cropping and mask CAM values outside head anatomy."""
+        rgb = np.asarray(image.convert("RGB"))
+        height, width = rgb.shape[:2]
+        bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+        gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+        gray = cv2.GaussianBlur(gray, (5, 5), 0)
+
+        binary = cv2.threshold(gray, 45, 255, cv2.THRESH_BINARY)[1]
+        binary = cv2.erode(binary, None, iterations=2)
+        binary = cv2.dilate(binary, None, iterations=2)
+        contours = cv2.findContours(
+            binary.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        )
+        contours = contours[0] if len(contours) == 2 else contours[1]
+
+        if not contours:
+            projected = cv2.resize(cam, (width, height), interpolation=cv2.INTER_CUBIC)
+            return np.clip(projected, 0.0, 1.0).astype(np.float32)
+
+        contour = max(contours, key=cv2.contourArea)
+        left = int(contour[contour[:, :, 0].argmin()][0][0])
+        right = int(contour[contour[:, :, 0].argmax()][0][0])
+        top = int(contour[contour[:, :, 1].argmin()][0][1])
+        bottom = int(contour[contour[:, :, 1].argmax()][0][1])
+
+        # These exclusive bounds reproduce crop_brain_contour exactly.
+        if right <= left or bottom <= top:
+            projected = cv2.resize(cam, (width, height), interpolation=cv2.INTER_CUBIC)
+            return np.clip(projected, 0.0, 1.0).astype(np.float32)
+
+        crop_cam = cv2.resize(
+            cam, (right - left, bottom - top), interpolation=cv2.INTER_CUBIC
+        )
+        projected = np.zeros((height, width), dtype=np.float32)
+        projected[top:bottom, left:right] = crop_cam
+
+        anatomy_mask = np.zeros((height, width), dtype=np.uint8)
+        cv2.drawContours(anatomy_mask, [contour], -1, 255, thickness=cv2.FILLED)
+        projected *= anatomy_mask.astype(np.float32) / 255.0
+        projected = np.clip(projected, 0.0, None)
+
+        maximum = float(projected.max())
+        if maximum > 1e-8:
+            projected /= maximum
+        return projected.astype(np.float32)
 
     def generate_raw_cam(
         self,
