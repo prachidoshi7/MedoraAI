@@ -76,7 +76,7 @@ The three bundled runtime model binaries are versioned with Git LFS. Install Git
 Clone and enter the repository:
 
 ```powershell
-git clone https://github.com/AcID3r/MEDORAAA_AI.git
+git clone https://github.com/AcID3r/MedoraAI.git
 cd MEDORAAA_AI
 git lfs pull
 ```
