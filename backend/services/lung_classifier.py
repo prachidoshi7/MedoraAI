@@ -1,6 +1,7 @@
 """Five-class lung CT classifier ported from the multi-organ prototype."""
 
 import logging
+import threading
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -76,6 +77,9 @@ class LungClassifier:
         weights = torch.load(model_path, map_location=self.device, weights_only=True)
         self.model.load_state_dict(weights)
         self.model.to(self.device).eval()
+        for parameter in self.model.parameters():
+            parameter.requires_grad_(False)
+        self.inference_lock = threading.RLock()
         self.transform = transforms.Compose([
             transforms.Resize((128, 128)),
             transforms.ToTensor(),
@@ -89,7 +93,10 @@ class LungClassifier:
 
     @torch.no_grad()
     def predict(self, image: Image.Image) -> LungClassificationResult:
-        probabilities = torch.softmax(self.model(self.preprocess(image)), dim=1)[0]
+        with self.inference_lock:
+            probabilities = torch.softmax(self.model(self.preprocess(image)), dim=1)[0]
+        if probabilities.numel() != len(CLASS_LABELS) or not torch.isfinite(probabilities).all():
+            raise RuntimeError("Lung classifier returned invalid probabilities")
         index = int(probabilities.argmax().item())
         confidence = float(probabilities[index].item())
         label = CLASS_LABELS[index]

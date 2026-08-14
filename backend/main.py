@@ -50,14 +50,28 @@ async def lifespan(app: FastAPI):
     # 4. Load ML models
     logger.info("🧠 Loading ML models...")
 
-    # Chest X-Ray Classifier (PyTorch)
-    from services.chest_classifier import ChestXRayClassifier
-    chest_classifier = ChestXRayClassifier(
-        model_path=settings.chest_model_path,
-        device="cpu",
-    )
-    app.state.chest_classifier = chest_classifier
-    logger.info("  ✅ Chest X-Ray classifier (EfficientNet-B4) loaded.")
+    # Chest X-Ray Classifier (RAD-DINO + CheXpert). The pinned artifact is
+    # downloaded once into the Hugging Face cache on first startup.
+    app.state.chest_classifier = None
+    app.state.chest_attribution = None
+    try:
+        from services.chest_classifier import ChestXRayClassifier
+        from services.chest_attribution import ChestRadDinoAttribution
+
+        chest_classifier = ChestXRayClassifier(
+            model_id=settings.CHEST_MODEL_ID,
+            revision=settings.CHEST_MODEL_REVISION,
+            device=settings.CHEST_DEVICE,
+            cache_dir=settings.chest_model_cache_dir,
+            local_files_only=settings.CHEST_MODEL_LOCAL_FILES_ONLY,
+            pathology_threshold=settings.CHEST_PATHOLOGY_THRESHOLD,
+            secondary_threshold=settings.CHEST_SECONDARY_THRESHOLD,
+        )
+        app.state.chest_classifier = chest_classifier
+        app.state.chest_attribution = ChestRadDinoAttribution(chest_classifier)
+        logger.info("  ✅ Chest X-Ray classifier (RAD-DINO + CheXpert) loaded.")
+    except Exception as exc:
+        logger.warning("  ⚠️ RAD-DINO chest classifier unavailable: %s", exc)
 
     # Brain Tumor Classifier (TensorFlow)
     from services.brain_classifier import BrainTumorClassifier
@@ -85,11 +99,10 @@ async def lifespan(app: FastAPI):
         app.state.kidney_classifier = None
         logger.warning("  ⚠️ Kidney ultrasound classifier unavailable: %s", exc)
 
-    # 5. Initialize Grad-CAM engines
-    from services.chest_gradcam import ChestGradCAM
+    # 5. Initialize convolutional-model Grad-CAM engines. RAD-DINO's
+    # transformer attribution engine was initialized with its classifier above.
     from services.brain_gradcam import BrainGradCAM
 
-    app.state.chest_gradcam = ChestGradCAM(chest_classifier)
     app.state.brain_gradcam = BrainGradCAM(brain_classifier)
     if app.state.lung_classifier:
         from services.lung_gradcam import LungGradCAM
@@ -97,7 +110,7 @@ async def lifespan(app: FastAPI):
     if app.state.kidney_classifier:
         from services.kidney_gradcam import KidneyGradCAM
         app.state.kidney_gradcam = KidneyGradCAM(app.state.kidney_classifier)
-    logger.info("  ✅ Grad-CAM engines initialized.")
+    logger.info("  ✅ Model explainability engines initialized.")
 
     # 6. Initialize the independent, fail-closed scan type gate.
     from services.scan_type_verifier import ScanTypeVerifier
@@ -142,6 +155,7 @@ async def lifespan(app: FastAPI):
 def _seed_hospital_demo():
     """Seed departments and deterministic multi-role hackathon accounts."""
     from passlib.context import CryptContext
+    from medicine_catalog import MEDICINE_CATALOG
 
     pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
     SessionLocal = get_session_factory()
@@ -160,23 +174,25 @@ def _seed_hospital_demo():
             for name, description, icon in department_specs
         }
         demo_users = [
-            (settings.DEMO_USER, settings.DEMO_PASSWORD, "doctor", "Demo Clinician", "Internal Medicine", "General Medicine"),
-            ("patient", "patient123", "patient", "Amit Patient", "", None),
-            ("dr.sharma", "doctor123", "doctor", "Dr. Priya Sharma", "Internal Medicine", "General Medicine"),
-            ("dr.patel", "doctor123", "doctor", "Dr. Rajesh Patel", "Neurologist", "Neurology"),
-            ("dr.kumar", "doctor123", "doctor", "Dr. Anil Kumar", "Pulmonologist", "Pulmonology"),
-            ("dr.singh", "doctor123", "doctor", "Dr. Manpreet Singh", "Nephrologist", "Nephrology"),
-            ("lab.tech", "lab123", "lab_tech", "Ravi Technician", "Diagnostic Imaging", "Radiology"),
+            (settings.DEMO_USER, settings.DEMO_PASSWORD, "doctor", "Demo Clinician", "MBBS, MD (Medicine)", "Internal Medicine", "General Medicine"),
+            ("patient", "patient123", "patient", "Amit Patient", "", "", None),
+            ("dr.sharma", "doctor123", "doctor", "Dr. Priya Sharma", "MBBS, MD (Medicine)", "Internal Medicine", "General Medicine"),
+            ("dr.patel", "doctor123", "doctor", "Dr. Rajesh Patel", "MBBS, DM (Neurology)", "Neurologist", "Neurology"),
+            ("dr.kumar", "doctor123", "doctor", "Dr. Anil Kumar", "MBBS, MD (Pulmonary Medicine)", "Pulmonologist", "Pulmonology"),
+            ("dr.singh", "doctor123", "doctor", "Dr. Manpreet Singh", "MBBS, DM (Nephrology)", "Nephrologist", "Nephrology"),
+            ("lab.tech", "lab123", "lab_tech", "Ravi Technician", "", "Diagnostic Imaging", "Radiology"),
+            ("pharmacy", "pharmacy123", "pharmacy", "Medora Care Pharmacy", "", "Ground Floor · Medora Hospital", None),
+            ("admin", "admin123", "admin", "Medora Administrator", "", "Hospital Operations", None),
         ]
-        for username, password, role, full_name, specialization, department_name in demo_users:
+        for username, password, role, full_name, qualification, specialization, department_name in demo_users:
             department_id = departments[department_name].id if department_name else None
             existing = crud.get_user_by_username(db, username)
             if existing:
                 existing.role = role
                 existing.full_name = existing.full_name or full_name
                 existing.specialization = existing.specialization or specialization
+                existing.qualification = existing.qualification or qualification
                 existing.department_id = existing.department_id or department_id
-                existing.is_active = True
             else:
                 crud.create_user(
                     db,
@@ -185,8 +201,15 @@ def _seed_hospital_demo():
                     role=role,
                     full_name=full_name,
                     specialization=specialization,
+                    qualification=qualification,
                     department_id=department_id,
                 )
+            if role == "pharmacy":
+                existing = crud.get_user_by_username(db, username)
+                existing.email = existing.email or "pharmacy@medora.local"
+                existing.phone = existing.phone or "+91 98765 43210"
+        crud.seed_medicine_catalog(db, MEDICINE_CATALOG)
+        crud.link_legacy_prescriptions_to_catalog(db)
         db.commit()
     finally:
         db.close()
@@ -228,7 +251,7 @@ async def health_check():
         "status": "ok",
         "version": settings.APP_VERSION,
         "models": {
-            "chest_xray": "loaded" if hasattr(app.state, "chest_classifier") else "not_loaded",
+            "chest_xray": "loaded" if getattr(app.state, "chest_classifier", None) else "not_loaded",
             "brain_mri": "loaded" if (
                 hasattr(app.state, "brain_classifier")
                 and app.state.brain_classifier.get_model() is not None
@@ -243,7 +266,7 @@ async def health_check():
 # REGISTER ROUTERS
 # ============================================================
 
-from routers import appointment, auth, case_study, diagnostic, doctors, history, prescription, report, scan
+from routers import appointment, auth, case_study, diagnostic, doctors, history, pharmacy, prescription, report, scan
 
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
 app.include_router(scan.router, prefix="/api/v1/scan", tags=["Scan"])
@@ -253,4 +276,5 @@ app.include_router(doctors.router, prefix="/api/v1", tags=["Hospital Directory"]
 app.include_router(appointment.router, prefix="/api/v1/appointments", tags=["Appointments"])
 app.include_router(diagnostic.router, prefix="/api/v1/diagnostic", tags=["Diagnostics"])
 app.include_router(prescription.router, prefix="/api/v1/prescriptions", tags=["Prescriptions"])
+app.include_router(pharmacy.router, prefix="/api/v1/pharmacy", tags=["Pharmacy"])
 app.include_router(case_study.router, prefix="/api/v1/case-study", tags=["Case Studies"])

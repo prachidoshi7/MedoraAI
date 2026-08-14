@@ -86,9 +86,12 @@ def _apply_compatibility_migrations(engine) -> None:
             "email": "VARCHAR(150) DEFAULT ''",
             "phone": "VARCHAR(20) DEFAULT ''",
             "specialization": "VARCHAR(100) DEFAULT ''",
+            "qualification": "VARCHAR(150) DEFAULT ''",
             "department_id": "INTEGER REFERENCES departments(id)",
             "avatar_url": "VARCHAR(500) DEFAULT ''",
             "is_active": "BOOLEAN DEFAULT 1",
+            "is_available": "BOOLEAN DEFAULT 1",
+            "availability_note": "VARCHAR(250) DEFAULT ''",
         },
         "scans": {
             "lab_tech_id": "INTEGER REFERENCES users(id)",
@@ -98,6 +101,9 @@ def _apply_compatibility_migrations(engine) -> None:
             "doctor_notes": "TEXT DEFAULT ''",
             "doctor_approved_at": "DATETIME",
             "forwarded_to_doctor_id": "INTEGER REFERENCES users(id)",
+        },
+        "pharmacy_inventory": {
+            "expiry_date": "DATE",
         },
     }
 

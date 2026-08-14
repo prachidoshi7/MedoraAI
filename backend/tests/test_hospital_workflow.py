@@ -1,5 +1,6 @@
 """Integration coverage for the v2 hospital journey foundation."""
 
+import json
 import tempfile
 import unittest
 from datetime import datetime, timezone
@@ -54,6 +55,13 @@ class HospitalWorkflowTests(unittest.TestCase):
             full_name="Lab Test",
             department_id=radiology.id,
         )
+        pharmacy = crud.create_user(
+            self.db,
+            "pharmacy.test",
+            "hash",
+            role="pharmacy",
+            full_name="Test Pharmacy",
+        )
 
         appointment = crud.create_appointment(
             self.db,
@@ -100,11 +108,37 @@ class HospitalWorkflowTests(unittest.TestCase):
             }],
             diagnosis="Clinical review pending",
         )
+        self.assertEqual(crud.link_legacy_prescriptions_to_catalog(self.db), 1)
+        self.db.refresh(prescription)
+        linked_medication = json.loads(prescription.medications)[0]
+        self.assertIsInstance(linked_medication["medicine_id"], int)
+        self.assertEqual(linked_medication["name"], "Example medication")
+        bill = crud.create_pharmacy_bill(
+            self.db,
+            prescription=prescription,
+            pharmacy_id=pharmacy.id,
+            items=[{
+                "medication_index": 0,
+                "name": "Example medication",
+                "dosage": "1 tablet",
+                "frequency": "Daily",
+                "duration": "5 days",
+                "quantity": 2,
+                "unit_price": 125.25,
+            }],
+            tax_percent=5,
+            notes="Collect from the hospital pharmacy",
+        )
 
         self.assertEqual(crud.get_patient_appointments(self.db, patient.id)[0].status, "confirmed")
         self.assertEqual(crud.get_pending_orders(self.db), [])
         self.assertEqual(crud.get_diagnostic_order(self.db, order.id).status, "completed")
         self.assertEqual(crud.get_patient_prescriptions(self.db, patient.id)[0].id, prescription.id)
+        self.assertEqual(crud.get_patient_pharmacy_bills(self.db, patient.id)[0].id, bill.id)
+        self.assertEqual(bill.subtotal, 250.50)
+        self.assertEqual(bill.tax_amount, 12.53)
+        self.assertEqual(bill.total, 263.03)
+        self.assertEqual(prescription.pharmacy_bill.id, bill.id)
         self.assertEqual(scan.diagnostic_order.id, order.id)
 
 

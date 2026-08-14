@@ -11,7 +11,15 @@ export default function LoginPage() {
   const navigate = useNavigate();
 
   if (isAuthenticated && user) {
-    const home = user.role === 'patient' ? '/patient/dashboard' : user.role === 'lab_tech' ? '/lab/dashboard' : '/doctor/dashboard';
+    const home = user.role === 'patient'
+      ? '/patient/dashboard'
+      : user.role === 'lab_tech'
+        ? '/lab/dashboard'
+        : user.role === 'pharmacy'
+          ? '/pharmacy/dashboard'
+          : user.role === 'admin'
+            ? '/admin/doctors'
+            : '/doctor/dashboard';
     return <Navigate to={home} replace />;
   }
 
@@ -91,6 +99,8 @@ export default function LoginPage() {
             <span><small>Patient</small><code>patient / patient123</code></span>
             <span><small>Doctor</small><code>dr.sharma / doctor123</code></span>
             <span><small>Lab</small><code>lab.tech / lab123</code></span>
+            <span><small>Pharmacy</small><code>pharmacy / pharmacy123</code></span>
+            <span><small>Admin</small><code>admin / admin123</code></span>
           </div>
           <p className="auth-switch">New patient? <a href="/register">Create an account</a></p>
         </div>

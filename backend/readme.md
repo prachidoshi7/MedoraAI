@@ -1,6 +1,6 @@
 # MedoraAI Backend
 
-FastAPI backend for authentication, uploads, ML inference, Grad-CAM generation, LLM-assisted reports, and PDF export.
+FastAPI backend for authentication, uploads, ML inference, model attribution, LLM-assisted reports, and PDF export.
 
 ## Setup
 
@@ -8,22 +8,29 @@ From the repo root:
 
 ```powershell
 cd backend
-pip install torch==2.3.1 torchvision==0.18.1 --index-url https://download.pytorch.org/whl/cpu
+pip install torch==2.4.1 torchvision==0.19.1 --index-url https://download.pytorch.org/whl/cpu
 pip install -r requirements.txt
 ```
 
-## Required Model Paths
+## Model Configuration
 
-The backend reads model paths from `.env` in the repo root:
+The backend reads model settings from `.env` in the repo root. The chest model
+uses a pinned Hugging Face RAD-DINO CheXpert checkpoint; the other classifiers
+use bundled local artifacts:
 
 ```env
-CHEST_MODEL_PATH=./models/chest_xray_efficientnet_b4.pt
+CHEST_MODEL_ID=kaan-ylmn/rad-dino-chexpert
+CHEST_MODEL_REVISION=db02e1b7234dd83c6d7c4485963ef5b22df9e5db
+CHEST_DEVICE=auto
 BRAIN_MODEL_PATH=./models/best_brain_model.keras
 LUNG_MODEL_PATH=./models/cnn_lung_model.pth
 KIDNEY_MODEL_PATH=./models/cnn_Kidney_Stone_model.pth
 ```
 
-Relative paths are resolved from the repo root by `backend/config.py`.
+Relative local paths are resolved from the repo root by `backend/config.py`.
+The first chest inference setup downloads about 346 MB; subsequent starts reuse
+the Hugging Face cache. Set `CHEST_MODEL_LOCAL_FILES_ONLY=true` after caching for
+an offline deployment.
 
 ## Run
 
@@ -78,4 +85,6 @@ Additional seeded credentials:
 patient / patient123
 dr.sharma / doctor123
 lab.tech / lab123
+pharmacy / pharmacy123
+admin / admin123
 ```

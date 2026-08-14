@@ -46,7 +46,7 @@ export default function BookAppointment() {
         <section className={`portal-card${departmentId ? '' : ' is-disabled'}`}>
           <header><span className="step-number">02</span><div><p className="eyebrow">Specialist</p><h2>Select your doctor</h2></div></header>
           <div className="doctor-grid">
-            {doctors.map((doctor) => <button type="button" key={doctor.id} className={doctorId === doctor.id ? 'doctor-card is-selected' : 'doctor-card'} onClick={() => setDoctorId(doctor.id)}><span className="profile-avatar">{doctor.full_name.split(' ').slice(-1)[0][0]}</span><span><strong>{doctor.full_name}</strong><small>{doctor.specialization}</small></span><i /></button>)}
+            {doctors.map((doctor) => <button type="button" disabled={!doctor.is_available} key={doctor.id} className={`${doctorId === doctor.id ? 'doctor-card is-selected' : 'doctor-card'}${doctor.is_available ? '' : ' is-unavailable'}`} onClick={() => setDoctorId(doctor.id)}><span className="profile-avatar">{doctor.full_name.split(' ').slice(-1)[0][0]}</span><span><strong>{doctor.full_name}</strong><small>{doctor.qualification || 'Medical qualification not listed'}</small><small>{doctor.specialization} · {doctor.department?.name}</small>{!doctor.is_available && <em>{doctor.availability_note || 'Temporarily unavailable'}</em>}</span><i /></button>)}
             {departmentId && !doctors.length && <div className="portal-empty">No doctors available in this department.</div>}
           </div>
         </section>
@@ -55,7 +55,7 @@ export default function BookAppointment() {
           <div className="form-grid">
             <label className="field field--wide"><span>Reason / symptoms</span><textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={4} placeholder="Describe your concern, symptoms, and how long you have had them…" required minLength={3} /></label>
             <label className="field"><span>Preferred date and time</span><input type="datetime-local" value={scheduledAt} min={new Date().toISOString().slice(0, 16)} onChange={(event) => setScheduledAt(event.target.value)} required /></label>
-            <div className="booking-summary"><span>Consulting</span><strong>{selectedDoctor?.full_name || 'Select a doctor'}</strong><small>{selectedDoctor?.specialization}</small></div>
+            <div className="booking-summary"><span>Consulting</span><strong>{selectedDoctor?.full_name || 'Select a doctor'}</strong><small>{selectedDoctor ? `${selectedDoctor.qualification} · ${selectedDoctor.specialization}` : 'Degree and specialty will appear here'}</small></div>
           </div>
         </section>
         {error && <div className="form-error">{error}</div>}

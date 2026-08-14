@@ -5,7 +5,7 @@
 
 /* ── Auth ── */
 export interface LoginRequest { username: string; password: string; }
-export type UserRole = 'patient' | 'doctor' | 'lab_tech' | 'admin';
+export type UserRole = 'patient' | 'doctor' | 'lab_tech' | 'pharmacy' | 'admin';
 export interface UserSummary {
   id: number;
   username: string;
@@ -14,8 +14,12 @@ export interface UserSummary {
   email: string;
   phone: string;
   specialization: string;
+  qualification: string;
   department_id: number | null;
   department_name: string | null;
+  is_active: boolean;
+  is_available: boolean;
+  availability_note: string;
 }
 export interface LoginResponse {
   access_token: string;
@@ -48,9 +52,9 @@ export const SCAN_TYPES: ScanTypeConfig[] = [
     id: 'chest_xray',
     label: 'Chest X-Ray',
     icon: '🫁',
-    model: 'EfficientNet-B4',
-    description: 'Multi-label thoracic disease classification',
-    classes: 'Atelectasis, Cardiomegaly, Effusion, Infiltration, Mass, Nodule, Pneumonia, Pneumothorax, Normal',
+    model: 'RAD-DINO + CheXpert',
+    description: 'Foundation-model thoracic finding classification',
+    classes: 'Atelectasis, Cardiomegaly, Edema, Consolidation, Pneumonia, Pneumothorax, Pleural Effusion, Fracture, Normal',
   },
   {
     id: 'brain_mri',
@@ -95,6 +99,21 @@ export interface Department {
 }
 
 export interface Doctor extends UserSummary { department: Department | null; }
+export interface DoctorCreateInput {
+  username: string;
+  password: string;
+  full_name: string;
+  qualification: string;
+  specialization: string;
+  department_id: number;
+  email: string;
+  phone: string;
+}
+export type DoctorUpdateInput = Partial<Omit<DoctorCreateInput, 'username' | 'password'>> & {
+  is_available?: boolean;
+  availability_note?: string;
+  is_active?: boolean;
+};
 export type AppointmentStatus = 'requested' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
 export interface Appointment {
   id: number;
@@ -126,10 +145,13 @@ export interface DiagnosticOrder {
 }
 
 export interface Medication {
+  medicine_id: number | null;
   name: string;
   dosage: string;
   frequency: string;
   duration: string;
+  suggested_quantity?: number | null;
+  quantity_basis?: string;
 }
 
 export interface Prescription {
@@ -142,6 +164,77 @@ export interface Prescription {
   instructions: string;
   diagnosis: string;
   created_at: string | null;
+}
+
+export interface PharmacyBillItem {
+  medication_index: number;
+  medicine_id: number | null;
+  name: string;
+  dosage: string;
+  frequency: string;
+  duration: string;
+  quantity: number;
+  unit_price: number;
+  line_total: number;
+}
+
+export interface PharmacyBill {
+  id: number;
+  invoice_number: string;
+  prescription: Prescription;
+  patient: UserSummary;
+  pharmacy: UserSummary;
+  items: PharmacyBillItem[];
+  subtotal: number;
+  tax_percent: number;
+  tax_amount: number;
+  total: number;
+  status: 'billed' | 'dispensed';
+  notes: string;
+  created_at: string | null;
+  dispensed_at: string | null;
+}
+
+export interface PharmacyQueueItem {
+  prescription: Prescription;
+  bill: PharmacyBill | null;
+}
+
+export interface Medicine {
+  id: number;
+  name: string;
+  category: string;
+}
+
+export interface PharmacyInventoryItem {
+  id: number;
+  medicine: Medicine;
+  current_quantity: number;
+  expiry_date: string | null;
+  updated_at: string | null;
+}
+
+export interface PharmacyRestockResult {
+  inventory: PharmacyInventoryItem;
+  previous_quantity: number;
+  added_quantity: number;
+  total_quantity: number;
+}
+
+export interface PharmacyCsvImportRow {
+  row_number: number;
+  medicine: Medicine;
+  previous_quantity: number;
+  added_quantity: number;
+  total_quantity: number;
+  expiry_date: string;
+}
+
+export interface PharmacyCsvImportResult {
+  rows_processed: number;
+  medicines_updated: number;
+  total_units_added: number;
+  rows: PharmacyCsvImportRow[];
 }
 
 export interface CaseStudy {
@@ -202,7 +295,6 @@ export interface ReportData {
   all_scores: Record<string, number>;
   clinical_history: string;
   technique: string;
-  comparison: string;
   image_quality: string;
   findings: string;
   impression: string;
@@ -216,23 +308,12 @@ export interface ReportData {
   is_low_confidence?: boolean;
   methodology?: string;
   limitations?: string;
+  doctor_assessment: string;
 }
 
 export interface ReportResponse {
   scan_id: string;
   report: ReportData;
-}
-
-export interface PDFRequest {
-  edited_clinical_history?: string;
-  edited_technique?: string;
-  edited_comparison?: string;
-  edited_image_quality?: string;
-  edited_findings?: string;
-  edited_impression?: string;
-  edited_differential_diagnosis?: string;
-  edited_recommendations?: string;
-  edited_critical_communication?: string;
 }
 
 /* ── Patient Summary ── */

@@ -54,12 +54,10 @@ data/*
 *.sqlite
 *.sqlite3
 
-# Keep only model artifacts used by the application. The current EfficientNetB3
-# brain model exceeds GitHub's normal file limit and remains a local artifact.
+# Keep only bundled model artifacts used by the application. RAD-DINO is fetched
+# from its pinned Hugging Face revision and is not duplicated in this repository.
 models/*
 !models/readme.md
-!models/chest_xray_efficientnet_b4.pt
-!models/chest_xray_efficientnet_b4.labels.json
 !models/best_brain_model.keras
 !models/cnn_lung_model.pth
 !models/cnn_Kidney_Stone_model.pth

@@ -45,7 +45,7 @@ GROUNDING RULES:
 - Do not convert classifier confidence into clinical severity, urgency, tumor grade, or disease stage.
 - If image and classifier disagree, say the examination is indeterminate and explain what confirmatory review is needed.
 - Use concise radiology language. Do not discuss model architecture, provider names, prompts, confidence percentages, or heatmaps in the clinical prose.
-- Do not mention the classifier, automated analysis, model agreement, concordance, confidence, or Grad-CAM anywhere in the clinical sections. Those results are displayed separately.
+- Do not mention the classifier, automated analysis, model agreement, concordance, confidence, Grad-CAM, or model attribution anywhere in the clinical sections. Those results are displayed separately.
 - Findings must contain observations only, organized by anatomic system. Do not place diagnoses, differential weighting, or management advice in findings.
 - Put diagnostic conclusions only in impression, ordered and numbered by clinical priority. Keep the separate differential section brief and consistent with that impression.
 - When a finding can be measured from the available image, use a specific numeric measurement with units. Never substitute vague size language such as "large," "significant," or "substantial."
@@ -328,14 +328,13 @@ Generate a structured diagnostic report."""
         # Model methodology description
         if scan_type == "chest_xray":
             methodology = (
-                "Classification was performed using an EfficientNet-B4 convolutional neural network "
-                "fine-tuned on the NIH ChestX-ray14 dataset (multi-label, 15 classes including No Finding). "
-                "The model outputs per-class sigmoid probabilities. "
-                "Explainability was generated using Gradient-weighted Class Activation Mapping (Grad-CAM) "
-                "targeting the last convolutional layer (conv_head). "
-                "The heatmap represents actual gradient-weighted activations from the trained model — "
-                "it is NOT a simulated or synthetic overlay. "
-                f"Grad-CAM target class: {heatmap_target_label}."
+                "Classification was performed using the RAD-DINO ViT-B/14 chest-radiograph "
+                "foundation encoder with a 14-label CheXpert downstream classification head. "
+                "The model processes 518×518 images and outputs independent sigmoid finding scores. "
+                "Explainability was generated from class-targeted, gradient-weighted RAD-DINO "
+                "patch-token representations entering the final transformer block. "
+                "The heatmap is a model-attribution visualization, not confirmed lesion segmentation. "
+                f"Attribution target class: {heatmap_target_label}."
             )
         elif scan_type == "brain_mri":
             methodology = (
@@ -349,14 +348,14 @@ Generate a structured diagnostic report."""
                 "The heatmap represents actual gradient-weighted activations from the trained model."
             )
         else:
-            methodology = "AI model classification with Grad-CAM explainability."
+            methodology = "AI model classification with model-attribution explainability."
 
         limitations = (
             "This AI system has inherent limitations: (1) The model was trained on a specific dataset "
             "and may not generalize to all patient populations or imaging equipment. "
             "(2) Multi-label classification confidence scores are not calibrated probabilities and "
             "should not be interpreted as disease prevalence. "
-            "(3) Grad-CAM heatmaps indicate model-influential regions but do not constitute "
+            "(3) Model-attribution heatmaps indicate model-influential regions but do not constitute "
             "radiologist-confirmed lesion localization. "
             "(4) The system cannot detect pathologies outside its training classes. "
             "(5) Image quality, positioning, and artifacts may affect model performance."
@@ -757,21 +756,20 @@ ADDITIONAL SAFETY REQUIREMENTS:
             if label == "No Finding":
                 findings = (
                     "TECHNIQUE: Frontal chest radiograph was analyzed using the MedoraAI "
-                    "EfficientNet-B4 classifier (15-class, NIH ChestX-ray14 label set). "
-                    "Gradient-weighted Class Activation Mapping (Grad-CAM) was computed "
-                    f"targeting the highest-scoring pathology class ({heatmap_target_label}) "
-                    "to visualize model attention even in the absence of a positive finding.\n\n"
+                    "RAD-DINO foundation encoder with a 14-label CheXpert classification head. "
+                    "Class-targeted patch-token attribution was computed "
+                    f"for the selected output ({heatmap_target_label}).\n\n"
                     "FINDINGS: The AI classifier did not identify any model-supported acute "
                     "cardiopulmonary abnormality above the configured reporting threshold. "
                     "No pathology class produced a sigmoid activation score exceeding the "
-                    "minimum confidence threshold. The Grad-CAM attention map shows where the "
+                    "minimum confidence threshold. The attribution map shows where the "
                     "model focused its analysis, but no region triggered a pathology classification. "
                     "This automated result does not exclude subtle or early-stage pathology that "
                     "falls below model sensitivity."
                 )
                 impression = (
                     "No model-supported acute chest X-ray abnormality detected. "
-                    "The AI attention map (Grad-CAM) did not localize a significant pathological region. "
+                    "The AI attribution map did not identify a dominant model-influential region. "
                     "Clinical correlation with patient history and symptoms is recommended."
                 )
                 recommendations = (
@@ -795,7 +793,7 @@ ADDITIONAL SAFETY REQUIREMENTS:
                 confidence_note = ""
                 if is_low_confidence:
                     confidence_note = (
-                        " IMPORTANT: The model confidence for this finding is below 50%, "
+                        " IMPORTANT: The model score is below the preferred decision margin, "
                         "indicating significant uncertainty. The finding should be interpreted "
                         "with caution and requires careful radiologist correlation. "
                         "Low-confidence AI results have higher rates of false positives."
@@ -803,15 +801,14 @@ ADDITIONAL SAFETY REQUIREMENTS:
 
                 findings = (
                     "TECHNIQUE: Frontal chest radiograph was analyzed using the MedoraAI "
-                    "EfficientNet-B4 classifier (15-class, NIH ChestX-ray14 label set). "
-                    "Gradient-weighted Class Activation Mapping (Grad-CAM) was computed "
+                    "RAD-DINO foundation encoder with a 14-label CheXpert classification head. "
+                    "Class-targeted gradient-weighted patch-token attribution was computed "
                     f"targeting the {heatmap_target_label} class to visualize the region of "
                     "model attention most relevant to the primary finding.\n\n"
                     f"FINDINGS: The AI chest X-ray model produced findings suggestive of "
                     f"{label} with a sigmoid activation confidence of {conf * 100:.1f}%. "
-                    f"The Grad-CAM attention map highlights the region that contributed most "
-                    f"to this classification — this represents actual gradient-weighted "
-                    f"neural network activations, not a simulated overlay. "
+                    f"The RAD-DINO attribution map highlights the patch-token region that "
+                    f"contributed most to this classification. "
                     f"The highlighted region should be correlated with clinical findings and "
                     f"is NOT equivalent to radiologist-confirmed lesion localization. "
                     f"The findings are assessed as {severity.lower()} based on model "
@@ -1113,7 +1110,7 @@ ADDITIONAL SAFETY REQUIREMENTS:
         machine_facing = re.compile(
             r"\b(?:classifier|model[- ]supported|model confidence|model agreement|"
             r"automated (?:analysis|signal|result|classification|finding)|AI|"
-            r"artificial intelligence|Grad-CAM|attention map|heatmap)\b",
+            r"artificial intelligence|Grad-CAM|model attribution|token attribution|attention map|heatmap)\b",
             re.IGNORECASE,
         )
         text = drop_sentences(text, machine_facing)

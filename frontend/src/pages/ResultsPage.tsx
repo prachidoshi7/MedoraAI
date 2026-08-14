@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { getReport } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import PatientReport from '../components/PatientReport';
+import PatientFinalReport from '../components/PatientFinalReport';
 import ReportEditor from '../components/ReportEditor';
 import ResultPanel from '../components/ResultPanel';
 import ScanViewer from '../components/ScanViewer';
@@ -157,24 +158,24 @@ export default function ResultsPage() {
         <div>
           <button className="back-link" onClick={() => navigate(user?.role === 'patient' ? '/patient/dashboard' : user?.role === 'lab_tech' ? '/lab/dashboard' : '/doctor/dashboard')}>← Dashboard</button>
           <p className="eyebrow">Case {scanId.slice(0, 8).toUpperCase()}</p>
-          <h1>{studyLabel} <em>review.</em></h1>
+          <h1>{studyLabel} <em>{user?.role === 'patient' ? 'final report.' : 'review.'}</em></h1>
         </div>
         <dl className="case-header__meta">
           <div><dt>Patient</dt><dd>{report.patient_id}</dd></div>
           <div><dt>Prepared</dt><dd>{created && !Number.isNaN(created.getTime()) ? created.toLocaleDateString('en', { day: '2-digit', month: 'short', year: 'numeric' }) : report.scan_date}</dd></div>
-          <div><dt>Status</dt><dd><i className="status-pulse" /> Ready for review</dd></div>
+          <div><dt>Status</dt><dd><i className="status-pulse" /> {user?.role === 'patient' ? 'Final · Doctor approved' : 'Ready for review'}</dd></div>
         </dl>
       </header>
 
-      <div className="report-tabbar" role="tablist" aria-label="Report audience">
-        {user?.role !== 'patient' && <button
+      {user?.role !== 'patient' && <div className="report-tabbar" role="tablist" aria-label="Report audience">
+        <button
           role="tab"
           aria-selected={tab === 'doctor'}
           className={tab === 'doctor' ? 'active' : ''}
           onClick={() => setTab('doctor')}
         >
           <span>01</span><strong>Doctor report</strong><small>Detailed clinical review</small>
-        </button>}
+        </button>
         <button
           role="tab"
           aria-selected={tab === 'patient'}
@@ -183,9 +184,11 @@ export default function ResultsPage() {
         >
           <span>02</span><strong>Patient explanation</strong><small>Simple · native language</small>
         </button>
-      </div>
+      </div>}
 
-      {tab === 'doctor' ? (
+      {user?.role === 'patient' ? (
+        <PatientFinalReport scanId={scanId} report={report} heatmapUrl={analysis.localization.heatmap_url} originalImageUrl={`/static/uploads/${scanId}.png`} />
+      ) : tab === 'doctor' ? (
         <div className="doctor-report-layout" role="tabpanel">
           <div className="result-grid">
             <ScanViewer

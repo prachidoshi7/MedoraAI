@@ -4,6 +4,10 @@ Database create/read/update operations for all models.
 """
 
 import json
+from datetime import datetime, timezone
+from decimal import Decimal, ROUND_HALF_UP
+from uuid import uuid4
+
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
 from .models import (
@@ -11,6 +15,10 @@ from .models import (
     CaseStudy,
     Department,
     DiagnosticOrder,
+    MedicineCatalog,
+    PharmacyBill,
+    PharmacyInventory,
+    PharmacyStockMovement,
     Prescription,
     Report,
     Result,
@@ -32,6 +40,7 @@ def create_user(
     email: str = "",
     phone: str = "",
     specialization: str = "",
+    qualification: str = "",
     department_id: int | None = None,
 ) -> User:
     """Create a new user."""
@@ -43,6 +52,7 @@ def create_user(
         email=email,
         phone=phone,
         specialization=specialization,
+        qualification=qualification,
         department_id=department_id,
     )
     db.add(user)
@@ -140,6 +150,149 @@ def get_doctors_by_department(
     if department_id is not None:
         query = query.filter(User.department_id == department_id)
     return query.order_by(User.full_name.asc()).all()
+
+
+def get_all_doctors(db: Session) -> list[User]:
+    return (
+        db.query(User)
+        .filter(User.role == "doctor")
+        .order_by(User.is_active.desc(), User.full_name.asc(), User.username.asc())
+        .all()
+    )
+
+
+# ============================================================
+# MEDICINE CATALOG AND PHARMACY INVENTORY
+# ============================================================
+
+def seed_medicine_catalog(db: Session, medicines: list[tuple[str, str]]) -> None:
+    existing = {name for (name,) in db.query(MedicineCatalog.name).all()}
+    additions = [
+        MedicineCatalog(name=name, category=category)
+        for name, category in medicines
+        if name not in existing
+    ]
+    if additions:
+        db.add_all(additions)
+        db.commit()
+
+
+def link_legacy_prescriptions_to_catalog(db: Session) -> int:
+    """Give older name-only prescription lines catalog IDs without losing history."""
+    catalog_by_name = {
+        item.name.casefold(): item for item in db.query(MedicineCatalog).all()
+    }
+    updated = 0
+    prescriptions = db.query(Prescription).all()
+    for prescription in prescriptions:
+        try:
+            medications = json.loads(prescription.medications or "[]")
+        except (json.JSONDecodeError, TypeError):
+            continue
+        changed = False
+        for medication in medications:
+            if not isinstance(medication, dict) or medication.get("medicine_id"):
+                continue
+            name = str(medication.get("name") or "").strip()
+            if not name:
+                continue
+            medicine = catalog_by_name.get(name.casefold())
+            if medicine is None:
+                medicine = MedicineCatalog(name=name, category="Legacy prescription")
+                db.add(medicine)
+                db.flush()
+                catalog_by_name[name.casefold()] = medicine
+            medication["medicine_id"] = medicine.id
+            medication["name"] = medicine.name
+            changed = True
+        if changed:
+            prescription.medications = json.dumps(medications)
+            updated += 1
+    if updated:
+        db.commit()
+    return updated
+
+
+def get_medicines(db: Session, include_inactive: bool = False) -> list[MedicineCatalog]:
+    query = db.query(MedicineCatalog)
+    if not include_inactive:
+        query = query.filter(MedicineCatalog.is_active.is_(True))
+    return query.order_by(MedicineCatalog.category.asc(), MedicineCatalog.name.asc()).all()
+
+
+def get_medicine(db: Session, medicine_id: int) -> MedicineCatalog | None:
+    return db.query(MedicineCatalog).filter(MedicineCatalog.id == medicine_id).first()
+
+
+def get_medicine_by_name(db: Session, name: str) -> MedicineCatalog | None:
+    normalized = name.strip().casefold()
+    return next(
+        (medicine for medicine in get_medicines(db) if medicine.name.casefold() == normalized),
+        None,
+    )
+
+
+def get_inventory(db: Session, pharmacy_id: int) -> list[PharmacyInventory]:
+    return (
+        db.query(PharmacyInventory)
+        .filter(PharmacyInventory.pharmacy_id == pharmacy_id)
+        .join(PharmacyInventory.medicine)
+        .order_by(MedicineCatalog.name.asc())
+        .all()
+    )
+
+
+def get_inventory_item(
+    db: Session, pharmacy_id: int, medicine_id: int
+) -> PharmacyInventory | None:
+    return (
+        db.query(PharmacyInventory)
+        .filter(
+            PharmacyInventory.pharmacy_id == pharmacy_id,
+            PharmacyInventory.medicine_id == medicine_id,
+        )
+        .first()
+    )
+
+
+def restock_inventory(
+    db: Session,
+    *,
+    pharmacy_id: int,
+    medicine_id: int,
+    quantity: int,
+    created_by_user_id: int,
+    expiry_date=None,
+    commit: bool = True,
+) -> tuple[PharmacyInventory, int]:
+    item = get_inventory_item(db, pharmacy_id, medicine_id)
+    if item is None:
+        item = PharmacyInventory(
+            pharmacy_id=pharmacy_id, medicine_id=medicine_id, quantity=0
+        )
+        db.add(item)
+        db.flush()
+    previous_quantity = item.quantity
+    item.quantity += quantity
+    if expiry_date is not None:
+        if previous_quantity <= 0 or item.expiry_date is None:
+            item.expiry_date = expiry_date
+        else:
+            item.expiry_date = min(item.expiry_date, expiry_date)
+    db.add(PharmacyStockMovement(
+        pharmacy_id=pharmacy_id,
+        medicine_id=medicine_id,
+        movement_type="restock",
+        quantity_delta=quantity,
+        balance_after=item.quantity,
+        created_by_user_id=created_by_user_id,
+    ))
+    if commit:
+        db.commit()
+        db.refresh(item)
+    else:
+        db.flush()
+    return item, previous_quantity
 
 
 # ============================================================
@@ -340,6 +493,136 @@ def get_patient_prescriptions(db: Session, patient_id: int) -> list[Prescription
         .order_by(Prescription.created_at.desc())
         .all()
     )
+
+
+# ============================================================
+# PHARMACY BILLS
+# ============================================================
+
+def get_pharmacy_prescription_queue(db: Session) -> list[Prescription]:
+    """Return every doctor-issued prescription for the pharmacy worklist."""
+    return db.query(Prescription).order_by(Prescription.created_at.desc()).all()
+
+
+def get_pharmacy_bill(db: Session, bill_id: int) -> PharmacyBill | None:
+    return db.query(PharmacyBill).filter(PharmacyBill.id == bill_id).first()
+
+
+def get_pharmacy_bill_for_prescription(
+    db: Session, prescription_id: int
+) -> PharmacyBill | None:
+    return (
+        db.query(PharmacyBill)
+        .filter(PharmacyBill.prescription_id == prescription_id)
+        .first()
+    )
+
+
+def get_patient_pharmacy_bills(db: Session, patient_id: int) -> list[PharmacyBill]:
+    return (
+        db.query(PharmacyBill)
+        .filter(PharmacyBill.patient_id == patient_id)
+        .order_by(PharmacyBill.created_at.desc())
+        .all()
+    )
+
+
+def get_issued_pharmacy_bills(db: Session, pharmacy_id: int) -> list[PharmacyBill]:
+    return (
+        db.query(PharmacyBill)
+        .filter(PharmacyBill.pharmacy_id == pharmacy_id)
+        .order_by(PharmacyBill.created_at.desc())
+        .all()
+    )
+
+
+def create_pharmacy_bill(
+    db: Session,
+    *,
+    prescription: Prescription,
+    pharmacy_id: int,
+    items: list[dict],
+    tax_percent: float = 0,
+    notes: str = "",
+    manage_inventory: bool = False,
+    created_by_user_id: int | None = None,
+) -> PharmacyBill:
+    """Create an immutable bill and optionally deduct stock in one transaction."""
+    money = Decimal("0.01")
+    normalized_items = []
+    subtotal = Decimal("0.00")
+    for item in items:
+        unit_price = Decimal(str(item["unit_price"])).quantize(money, ROUND_HALF_UP)
+        line_total = (unit_price * int(item["quantity"])).quantize(money, ROUND_HALF_UP)
+        subtotal += line_total
+        normalized_items.append({
+            **item,
+            "unit_price": float(unit_price),
+            "line_total": float(line_total),
+        })
+
+    subtotal = subtotal.quantize(money, ROUND_HALF_UP)
+    normalized_tax = Decimal(str(tax_percent)).quantize(money, ROUND_HALF_UP)
+    tax_amount = (subtotal * normalized_tax / Decimal("100")).quantize(
+        money, ROUND_HALF_UP
+    )
+    total = (subtotal + tax_amount).quantize(money, ROUND_HALF_UP)
+    invoice_number = (
+        f"MED-{datetime.now(timezone.utc):%Y%m%d}-{uuid4().hex[:6].upper()}"
+    )
+
+    bill = PharmacyBill(
+        invoice_number=invoice_number,
+        prescription_id=prescription.id,
+        patient_id=prescription.patient_id,
+        pharmacy_id=pharmacy_id,
+        items_json=json.dumps(normalized_items),
+        subtotal=float(subtotal),
+        tax_percent=float(normalized_tax),
+        tax_amount=float(tax_amount),
+        total=float(total),
+        status="billed",
+        notes=notes,
+    )
+    db.add(bill)
+    db.flush()
+
+    if manage_inventory:
+        for item in normalized_items:
+            medicine_id = item.get("medicine_id")
+            if not medicine_id:
+                raise ValueError(f"{item.get('name', 'Medicine')} is not linked to the medicine catalog")
+            inventory = get_inventory_item(db, pharmacy_id, int(medicine_id))
+            requested = int(item["quantity"])
+            available = inventory.quantity if inventory else 0
+            if available < requested:
+                raise ValueError(
+                    f"Only {available} unit(s) of {item.get('name', 'this medicine')} are available"
+                )
+            inventory.quantity -= requested
+            if inventory.quantity == 0:
+                inventory.expiry_date = None
+            db.add(PharmacyStockMovement(
+                pharmacy_id=pharmacy_id,
+                medicine_id=int(medicine_id),
+                movement_type="sale",
+                quantity_delta=-requested,
+                balance_after=inventory.quantity,
+                reference_bill_id=bill.id,
+                created_by_user_id=created_by_user_id or pharmacy_id,
+            ))
+
+    db.commit()
+    db.refresh(bill)
+    return bill
+
+
+def mark_pharmacy_bill_dispensed(db: Session, bill: PharmacyBill) -> PharmacyBill:
+    bill.status = "dispensed"
+    bill.dispensed_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(bill)
+    return bill
 
 
 # ============================================================

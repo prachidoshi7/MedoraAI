@@ -4,10 +4,14 @@ import BookAppointment from './pages/BookAppointment';
 import CaseStudyView from './pages/CaseStudyView';
 import ConsultationPage from './pages/ConsultationPage';
 import DoctorDashboard from './pages/DoctorDashboard';
+import DoctorAdminPage from './pages/DoctorAdminPage';
 import LabDashboard from './pages/LabDashboard';
 import LabUploadScan from './pages/LabUploadScan';
 import LoginPage from './pages/LoginPage';
 import PatientDashboard from './pages/PatientDashboard';
+import PharmacyBillPage from './pages/PharmacyBillPage';
+import PharmacyDashboard from './pages/PharmacyDashboard';
+import PharmacyInventoryPage from './pages/PharmacyInventoryPage';
 import RegisterPage from './pages/RegisterPage';
 import ResultsPage from './pages/ResultsPage';
 import UploadPage from './pages/UploadPage';
@@ -17,7 +21,8 @@ const homeByRole: Record<UserRole, string> = {
   patient: '/patient/dashboard',
   doctor: '/doctor/dashboard',
   lab_tech: '/lab/dashboard',
-  admin: '/doctor/dashboard',
+  pharmacy: '/pharmacy/dashboard',
+  admin: '/admin/doctors',
 };
 
 function ProtectedRoute({ roles, children }: { roles?: UserRole[]; children: React.ReactNode }) {
@@ -50,8 +55,14 @@ const navByRole: Record<UserRole, Array<{ path: string; label: string; icon: str
     { path: '/lab/dashboard', label: 'Lab worklist', icon: '⌂' },
     { path: '/upload', label: 'Direct upload', icon: '⌁' },
   ],
+  pharmacy: [
+    { path: '/pharmacy/dashboard', label: 'Medicine orders', icon: 'Rx' },
+    { path: '/pharmacy/inventory', label: 'Store management', icon: '▦' },
+  ],
   admin: [
-    { path: '/doctor/dashboard', label: 'Operations', icon: '⌂' },
+    { path: '/admin/doctors', label: 'Doctors admin', icon: 'Dr' },
+    { path: '/doctor/dashboard', label: 'Clinical operations', icon: '⌂' },
+    { path: '/pharmacy/inventory', label: 'Pharmacy store', icon: '▦' },
     { path: '/upload', label: 'Direct analysis', icon: '⌁' },
   ],
 };
@@ -69,7 +80,7 @@ function Navigation() {
       <nav className="role-navigation">
         {navByRole[user.role].map((item) => <Link key={item.path} className={location.pathname === item.path ? 'active' : ''} to={item.path}><span>{item.icon}</span>{item.label}</Link>)}
       </nav>
-      <div className="journey-map"><p className="eyebrow">Connected journey</p>{['Patient visit', 'Doctor consult', 'AI diagnostics', 'Clinical review', 'Final case'].map((label, index) => <div key={label}><span>{String(index + 1).padStart(2, '0')}</span><i /><strong>{label}</strong></div>)}</div>
+      <div className="journey-map"><p className="eyebrow">Connected journey</p>{['Patient visit', 'Doctor consult', 'AI diagnostics', 'Clinical review', 'Prescription', 'Pharmacy billing'].map((label, index) => <div key={label}><span>{String(index + 1).padStart(2, '0')}</span><i /><strong>{label}</strong></div>)}</div>
       <footer className="sidebar-footer">
         <div className="engine-status"><i /> Hospital systems connected</div>
         <div className="doctor-identity"><span className="doctor-avatar">{user.full_name?.slice(0, 1) || 'M'}</span><span><small>Signed in as</small>{user.full_name}</span></div>
@@ -80,11 +91,16 @@ function Navigation() {
 }
 
 function ApplicationFrame() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
+  const dashboardLabels: Partial<Record<UserRole, string>> = {
+    patient: 'Patient dashboard', doctor: 'Doctor dashboard', lab_tech: 'Lab dashboard',
+    pharmacy: 'Pharmacy dashboard', admin: 'Administration dashboard',
+  };
   return (
     <div className={isAuthenticated ? 'app-shell' : 'auth-shell'}>
       <Navigation />
       <main className={isAuthenticated ? 'page-content' : 'page-content page-content--auth'}>
+        {isAuthenticated && user && <div className="workspace-context-bar"><span>{dashboardLabels[user.role]}</span><small>{user.full_name}</small></div>}
         <Routes>
           <Route path="/" element={<HomeRedirect />} />
           <Route path="/login" element={<LoginPage />} />
@@ -93,11 +109,15 @@ function ApplicationFrame() {
           <Route path="/patient/book-appointment" element={<ProtectedRoute roles={['patient']}><BookAppointment /></ProtectedRoute>} />
           <Route path="/patient/case-study/:caseStudyId" element={<ProtectedRoute roles={['patient']}><CaseStudyView /></ProtectedRoute>} />
           <Route path="/doctor/dashboard" element={<ProtectedRoute roles={['doctor', 'admin']}><DoctorDashboard /></ProtectedRoute>} />
+          <Route path="/admin/doctors" element={<ProtectedRoute roles={['admin']}><DoctorAdminPage /></ProtectedRoute>} />
           <Route path="/doctor/consultation/:appointmentId" element={<ProtectedRoute roles={['doctor', 'admin']}><ConsultationPage /></ProtectedRoute>} />
           <Route path="/doctor/case-study/:caseStudyId" element={<ProtectedRoute roles={['doctor', 'admin']}><CaseStudyView /></ProtectedRoute>} />
           <Route path="/lab/dashboard" element={<ProtectedRoute roles={['lab_tech', 'admin']}><LabDashboard /></ProtectedRoute>} />
           <Route path="/lab/upload/:orderId" element={<ProtectedRoute roles={['lab_tech', 'admin']}><LabUploadScan /></ProtectedRoute>} />
           <Route path="/lab/results/:scanId" element={<ProtectedRoute roles={['lab_tech', 'admin']}><ResultsPage /></ProtectedRoute>} />
+          <Route path="/pharmacy/dashboard" element={<ProtectedRoute roles={['pharmacy', 'admin']}><PharmacyDashboard /></ProtectedRoute>} />
+          <Route path="/pharmacy/inventory" element={<ProtectedRoute roles={['pharmacy', 'admin']}><PharmacyInventoryPage /></ProtectedRoute>} />
+          <Route path="/medicine-bills/:billId" element={<ProtectedRoute roles={['patient', 'pharmacy', 'admin']}><PharmacyBillPage /></ProtectedRoute>} />
           <Route path="/upload" element={<ProtectedRoute roles={['doctor', 'lab_tech', 'admin']}><UploadPage /></ProtectedRoute>} />
           <Route path="/results/:scanId" element={<ProtectedRoute><ResultsPage /></ProtectedRoute>} />
           <Route path="*" element={<HomeRedirect />} />

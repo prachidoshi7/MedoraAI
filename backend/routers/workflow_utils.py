@@ -5,6 +5,7 @@ import json
 from fastapi import HTTPException
 
 from routers.auth import serialize_user
+from services.prescription_quantity import suggest_dispense_quantity
 
 
 def department_payload(department):
@@ -58,16 +59,49 @@ def prescription_payload(prescription):
         medications = json.loads(prescription.medications or "[]")
     except (json.JSONDecodeError, TypeError):
         medications = []
+    enriched_medications = []
+    for medication in medications:
+        if not isinstance(medication, dict):
+            continue
+        suggested_quantity, quantity_basis = suggest_dispense_quantity(medication)
+        enriched_medications.append({
+            **medication,
+            "suggested_quantity": suggested_quantity,
+            "quantity_basis": quantity_basis,
+        })
     return {
         "id": prescription.id,
         "appointment_id": prescription.appointment_id,
         "doctor": serialize_user(prescription.doctor),
         "patient": serialize_user(prescription.patient),
         "scan_id": prescription.scan_id,
-        "medications": medications,
+        "medications": enriched_medications,
         "instructions": prescription.instructions or "",
         "diagnosis": prescription.diagnosis or "",
         "created_at": prescription.created_at,
+    }
+
+
+def pharmacy_bill_payload(bill):
+    try:
+        items = json.loads(bill.items_json or "[]")
+    except (json.JSONDecodeError, TypeError):
+        items = []
+    return {
+        "id": bill.id,
+        "invoice_number": bill.invoice_number,
+        "prescription": prescription_payload(bill.prescription),
+        "patient": serialize_user(bill.patient),
+        "pharmacy": serialize_user(bill.pharmacy),
+        "items": items,
+        "subtotal": bill.subtotal,
+        "tax_percent": bill.tax_percent,
+        "tax_amount": bill.tax_amount,
+        "total": bill.total,
+        "status": bill.status,
+        "notes": bill.notes or "",
+        "created_at": bill.created_at,
+        "dispensed_at": bill.dispensed_at,
     }
 
 

@@ -74,10 +74,10 @@ class PDFGenerator:
             severity=report_data.get("severity", ""),
             clinical_history=report_data.get("clinical_history", "Not provided."),
             technique=report_data.get("technique", ""),
-            comparison=report_data.get("comparison", ""),
             image_quality=report_data.get("image_quality", ""),
             findings=report_data.get("findings", ""),
             impression=report_data.get("impression", ""),
+            doctor_assessment=report_data.get("doctor_assessment", ""),
             differential_diagnosis=report_data.get("differential_diagnosis", ""),
             recommendations=report_data.get("recommendations", ""),
             critical_communication=report_data.get("critical_communication", ""),
@@ -123,6 +123,7 @@ class PDFGenerator:
 
         buffer = io.BytesIO()
         report_id = scan_id[:8].upper()
+        is_final = bool(report_data.get("is_final"))
         doc = SimpleDocTemplate(
             buffer,
             pagesize=A4,
@@ -130,9 +131,9 @@ class PDFGenerator:
             leftMargin=17 * mm,
             topMargin=25 * mm,
             bottomMargin=19 * mm,
-            title=f"MedoraAI Preliminary Imaging Interpretation {report_id}",
+            title=f"MedoraAI {'Final Clinical Imaging Report' if is_final else 'Preliminary Imaging Interpretation'} {report_id}",
             author="MedoraAI",
-            subject="Preliminary clinical imaging report",
+            subject="Final doctor-approved clinical imaging report" if is_final else "Preliminary clinical imaging report",
         )
 
         ink = colors.HexColor("#172126")
@@ -198,13 +199,13 @@ class PDFGenerator:
             canvas.setFillColor(muted)
             canvas.drawRightString(A4[0] - 17 * mm, A4[1] - 12 * mm, f"REPORT {report_id}")
             canvas.line(17 * mm, 13 * mm, A4[0] - 17 * mm, 13 * mm)
-            canvas.drawString(17 * mm, 8.5 * mm, "Preliminary report — clinician verification required")
+            canvas.drawString(17 * mm, 8.5 * mm, "Final doctor-approved patient record" if is_final else "Preliminary report — clinician verification required")
             canvas.drawRightString(A4[0] - 17 * mm, 8.5 * mm, f"Page {document.page}")
             canvas.restoreState()
 
         story = [
-            Paragraph("Preliminary Imaging Interpretation", title_style),
-            Paragraph("STRUCTURED RADIOLOGY DRAFT  /  CLINICIAN REVIEW REQUIRED", subtitle_style),
+            Paragraph("Final Clinical Imaging Report" if is_final else "Preliminary Imaging Interpretation", title_style),
+            Paragraph("DOCTOR APPROVED  /  FINAL PATIENT RECORD" if is_final else "STRUCTURED RADIOLOGY DRAFT  /  CLINICIAN REVIEW REQUIRED", subtitle_style),
         ]
 
         scan_label = "Brain MRI" if report_data.get("scan_type") == "brain_mri" else "Chest radiograph"
@@ -266,10 +267,11 @@ class PDFGenerator:
 
         add_section("Clinical history", report_data.get("clinical_history", "Not provided."))
         add_section("Technique", report_data.get("technique", "Not provided."))
-        add_section("Comparison", report_data.get("comparison", "No prior imaging supplied."))
         add_section("Image quality / study limitations", report_data.get("image_quality", "Not provided."))
         add_section("Findings", report_data.get("findings", "Not available."))
         add_section("Impression", report_data.get("impression", "Not available."), emphasized=True)
+        if report_data.get("doctor_assessment"):
+            add_section("Doctor clinical assessment", report_data["doctor_assessment"], emphasized=True)
         add_section("Differential considerations", report_data.get("differential_diagnosis", "None stated."))
         add_section("Recommendations", report_data.get("recommendations", "Clinical correlation recommended."))
         add_section(
@@ -339,7 +341,7 @@ class PDFGenerator:
                 score_table,
             ])
 
-        add_section("Method", report_data.get("methodology", "Automated image classification with Grad-CAM explainability."))
+        add_section("Method", report_data.get("methodology", "Automated image classification with model-attribution explainability."))
         add_section("Known limitations", report_data.get("limitations", "Performance depends on image quality and trained categories."))
 
         disclaimer_table = Table(
@@ -368,7 +370,6 @@ class PDFGenerator:
         scan_id: str,
         edited_clinical_history: Optional[str] = None,
         edited_technique: Optional[str] = None,
-        edited_comparison: Optional[str] = None,
         edited_image_quality: Optional[str] = None,
         edited_findings: Optional[str] = None,
         edited_impression: Optional[str] = None,
@@ -387,8 +388,6 @@ class PDFGenerator:
             data["clinical_history"] = edited_clinical_history
         if edited_technique:
             data["technique"] = edited_technique
-        if edited_comparison:
-            data["comparison"] = edited_comparison
         if edited_image_quality:
             data["image_quality"] = edited_image_quality
         if edited_findings:
@@ -532,7 +531,7 @@ class PDFGenerator:
         This keeps local Windows demos working when WeasyPrint/Pango is unavailable.
         """
         lines = [
-            "MedoraAI Preliminary Imaging Interpretation",
+            "MedoraAI Final Clinical Imaging Report" if report_data.get("is_final") else "MedoraAI Preliminary Imaging Interpretation",
             f"Report ID: {scan_id[:8].upper()}",
             f"Patient ID: {report_data.get('patient_id', 'DEMO-001')}",
             f"Scan Date: {report_data.get('scan_date', '')}",
@@ -548,9 +547,6 @@ class PDFGenerator:
             "Technique",
             report_data.get("technique", ""),
             "",
-            "Comparison",
-            report_data.get("comparison", ""),
-            "",
             "Image Quality",
             report_data.get("image_quality", ""),
             "",
@@ -559,6 +555,9 @@ class PDFGenerator:
             "",
             "Impression",
             report_data.get("impression", ""),
+            "",
+            "Doctor Clinical Assessment",
+            report_data.get("doctor_assessment", ""),
             "",
             "Differential Considerations",
             report_data.get("differential_diagnosis", ""),

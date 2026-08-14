@@ -28,6 +28,11 @@ async def book_appointment(
     doctor = crud.get_user(db, payload.doctor_id)
     if not doctor or doctor.role != "doctor" or not doctor.is_active:
         raise HTTPException(status_code=404, detail="Doctor not found")
+    if not doctor.is_available:
+        raise HTTPException(
+            status_code=409,
+            detail=doctor.availability_note or "This doctor is temporarily unavailable",
+        )
     department_id = payload.department_id or doctor.department_id
     if department_id != doctor.department_id:
         raise HTTPException(status_code=400, detail="Doctor does not belong to that department")

@@ -6,10 +6,12 @@
 import axios from 'axios';
 import type {
   LoginRequest, LoginResponse, UploadResponse, AnalysisResponse,
-  ReportResponse, PDFRequest, HistoryResponse, DeleteScansResponse,
+  ReportResponse, HistoryResponse, DeleteScansResponse,
   ScanType, PatientSummaryResponse, RegisterRequest, UserSummary, Department,
   Doctor, Appointment, AppointmentStatus, DiagnosticOrder, Prescription,
-  Medication, CaseStudy
+  Medication, CaseStudy, PharmacyBill, PharmacyQueueItem, Medicine,
+  PharmacyInventoryItem, PharmacyRestockResult, PharmacyCsvImportResult,
+  DoctorCreateInput, DoctorUpdateInput
 } from '../types';
 
 const api = axios.create({
@@ -78,6 +80,26 @@ export async function getDoctors(departmentId?: number): Promise<Doctor[]> {
   return (await api.get<Doctor[]>('/doctors', { params: { department_id: departmentId } })).data;
 }
 
+export async function getMedicines(): Promise<Medicine[]> {
+  return (await api.get<Medicine[]>('/medicines')).data;
+}
+
+export async function getAdminDoctors(): Promise<Doctor[]> {
+  return (await api.get<Doctor[]>('/admin/doctors')).data;
+}
+
+export async function createDoctor(data: DoctorCreateInput): Promise<Doctor> {
+  return (await api.post<Doctor>('/admin/doctors', data)).data;
+}
+
+export async function updateDoctor(id: number, data: DoctorUpdateInput): Promise<Doctor> {
+  return (await api.patch<Doctor>(`/admin/doctors/${id}`, data)).data;
+}
+
+export async function deleteDoctor(id: number): Promise<Doctor> {
+  return (await api.delete<Doctor>(`/admin/doctors/${id}`)).data;
+}
+
 // ---- Appointments ----
 export async function getMyAppointments(): Promise<Appointment[]> {
   return (await api.get<Appointment[]>('/appointments/my')).data;
@@ -132,6 +154,50 @@ export async function createPrescription(data: {
   return (await api.post<Prescription>('/prescriptions', data)).data;
 }
 
+// ---- Pharmacy ----
+export async function getPharmacyQueue(): Promise<PharmacyQueueItem[]> {
+  return (await api.get<PharmacyQueueItem[]>('/pharmacy/queue')).data;
+}
+
+export async function getPharmacyInventory(): Promise<PharmacyInventoryItem[]> {
+  return (await api.get<PharmacyInventoryItem[]>('/pharmacy/inventory')).data;
+}
+
+export async function restockPharmacyInventory(medicineId: number, newQuantity: number, expiryDate?: string): Promise<PharmacyRestockResult> {
+  return (await api.post<PharmacyRestockResult>('/pharmacy/inventory/restock', {
+    medicine_id: medicineId,
+    new_quantity: newQuantity,
+    expiry_date: expiryDate || null,
+  })).data;
+}
+
+export async function uploadPharmacyInventoryCsv(file: File): Promise<PharmacyCsvImportResult> {
+  const formData = new FormData();
+  formData.append('file', file);
+  return (await api.post<PharmacyCsvImportResult>('/pharmacy/inventory/import-csv', formData)).data;
+}
+
+export async function getMyPharmacyBills(): Promise<PharmacyBill[]> {
+  return (await api.get<PharmacyBill[]>('/pharmacy/bills/mine')).data;
+}
+
+export async function createPharmacyBill(data: {
+  prescription_id: number;
+  items: Array<{ medication_index: number; quantity: number; unit_price: number }>;
+  tax_percent: number;
+  notes: string;
+}): Promise<PharmacyBill> {
+  return (await api.post<PharmacyBill>('/pharmacy/bills', data)).data;
+}
+
+export async function getPharmacyBill(id: number): Promise<PharmacyBill> {
+  return (await api.get<PharmacyBill>(`/pharmacy/bills/${id}`)).data;
+}
+
+export async function markPharmacyBillDispensed(id: number): Promise<PharmacyBill> {
+  return (await api.patch<PharmacyBill>(`/pharmacy/bills/${id}/dispense`)).data;
+}
+
 // ---- Case studies ----
 export async function getMyCaseStudies(): Promise<CaseStudy[]> {
   return (await api.get<CaseStudy[]>('/case-study/mine')).data;
@@ -177,16 +243,15 @@ export async function regenerateReport(scanId: string): Promise<ReportResponse> 
 }
 
 export async function reviewReport(scanId: string, data: {
-  edited_findings?: string; edited_impression?: string; doctor_notes?: string; approve?: boolean;
+  doctor_notes?: string; approve?: boolean;
 }): Promise<ReportResponse> {
   return (await api.post<ReportResponse>(`/report/${scanId}/doctor-review`, data)).data;
 }
 
 export async function downloadPdf(
   scanId: string,
-  edits?: PDFRequest,
 ): Promise<Blob> {
-  const res = await api.post(`/report/${scanId}/pdf`, edits || {}, {
+  const res = await api.post(`/report/${scanId}/pdf`, {}, {
     responseType: 'blob',
   });
   return res.data;

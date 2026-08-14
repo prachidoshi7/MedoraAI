@@ -431,7 +431,7 @@ async def analyze_scan(
 ):
     """
     Trigger AI inference on an uploaded scan.
-    Runs classification → Grad-CAM → severity → report generation.
+    Runs classification → model attribution → severity → report generation.
     """
     # Get scan from DB
     scan = crud.get_scan(db, scan_id)
@@ -457,7 +457,7 @@ async def analyze_scan(
         image = Image.open(scan.file_path).convert("RGB")
 
         # Classify first, then start the unchanged image-aware report request
-        # while Grad-CAM runs. Model work is moved off the async event loop so
+        # while model attribution runs. Model work is moved off the async event loop so
         # health checks and the report network request remain responsive.
         if scan.scan_type == "chest_xray":
             classification_result = await asyncio.to_thread(
@@ -533,7 +533,7 @@ async def analyze_scan(
         # Calculate analysis time
         analysis_time_ms = int((time.time() - start_time) * 1000)
 
-        # Save heatmap (already at 512×512 from Grad-CAM generator)
+        # Save the 512×512 model-attribution heatmap.
         heatmap_path = os.path.join(settings.heatmaps_dir, f"{scan_id}.png")
         heatmap_image = Image.fromarray(heatmap_overlay)
         heatmap_image.save(heatmap_path, "PNG")
@@ -556,7 +556,7 @@ async def analyze_scan(
         crud.complete_order_for_scan(db, scan_id)
 
         # Do not hold the analysis response open for the report. The report task
-        # already overlaps Grad-CAM and is persisted after the response is sent.
+        # already overlaps attribution generation and is persisted after the response is sent.
         background_tasks.add_task(
             _store_generated_report,
             report_task,
@@ -599,28 +599,37 @@ async def analyze_scan(
 
 
 def _classify_chest_xray(request: Request, image: Image.Image):
-    """Run chest X-ray classification."""
-    classifier = request.app.state.chest_classifier
+    """Run RAD-DINO CheXpert chest X-ray classification."""
+    classifier = getattr(request.app.state, "chest_classifier", None)
+    if classifier is None:
+        raise RuntimeError(
+            "RAD-DINO chest model is unavailable. Check network/cache configuration and restart."
+        )
     return classifier.predict(image)
 
 
 def _localize_chest_xray(request: Request, image: Image.Image, result):
-    """Generate chest X-ray Grad-CAM localization for a classification."""
+    """Generate class-targeted RAD-DINO patch-token attribution."""
     classifier = request.app.state.chest_classifier
-    gradcam = request.app.state.chest_gradcam
+    attribution = getattr(request.app.state, "chest_attribution", None)
+    if attribution is None:
+        raise RuntimeError("RAD-DINO chest attribution engine is unavailable.")
 
-    # Always generate a real Grad-CAM heatmap targeting the highest-scoring
-    # pathology class. Even when the final label is "No Finding", this shows
-    # where the model's attention was focused and WHY it found nothing significant.
     input_tensor = classifier.preprocess(image)
     heatmap_target_idx = result.heatmap_target_idx
     heatmap_target_label = result.heatmap_target_label
 
-    heatmap_overlay = gradcam.generate_heatmap(
-        image, input_tensor, heatmap_target_idx, target_label=heatmap_target_label,
+    heatmap_overlay, raw_attribution = attribution.generate_heatmap_and_raw(
+        image,
+        input_tensor,
+        heatmap_target_idx,
+        target_label=heatmap_target_label,
     )
-    raw_cam = gradcam.generate_raw_cam(input_tensor, heatmap_target_idx, image=image)
-    bboxes = gradcam.heatmap_to_bboxes(raw_cam, threshold=0.6)
+    bboxes = attribution.heatmap_to_bboxes(
+        raw_attribution,
+        threshold=0.55,
+        label=f"{heatmap_target_label}_model_attribution",
+    )
 
     return heatmap_overlay, bboxes
 
@@ -656,7 +665,11 @@ def _classify_lung_ct(request: Request, image: Image.Image):
 
 
 def _localize_lung_ct(request: Request, image: Image.Image, result):
-    return request.app.state.lung_gradcam.generate(image, result.heatmap_target_idx)
+    return request.app.state.lung_gradcam.generate(
+        image,
+        result.heatmap_target_idx,
+        result.heatmap_target_label,
+    )
 
 
 def _classify_kidney_us(request: Request, image: Image.Image):
@@ -667,7 +680,11 @@ def _classify_kidney_us(request: Request, image: Image.Image):
 
 
 def _localize_kidney_us(request: Request, image: Image.Image, result):
-    return request.app.state.kidney_gradcam.generate(image, result.heatmap_target_idx)
+    return request.app.state.kidney_gradcam.generate(
+        image,
+        result.heatmap_target_idx,
+        result.heatmap_target_label,
+    )
 
 
 async def _store_generated_report(report_task, scan_id: str) -> None:

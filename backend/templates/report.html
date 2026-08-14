@@ -332,11 +332,11 @@
     {% if heatmap_b64 %}
     <div class="heatmap-section">
         <h2 style="font-size: 12px; color: #0066cc; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid #e0e0e0; padding-bottom: 3px; text-align: left;">
-            Grad-CAM Heatmap
+            Model Attribution Heatmap
         </h2>
-        <img src="data:image/png;base64,{{ heatmap_b64 }}" alt="Grad-CAM Heatmap" />
+        <img src="data:image/png;base64,{{ heatmap_b64 }}" alt="Model Attribution Heatmap" />
         {% if heatmap_target_label %}
-        <span class="heatmap-label">Grad-CAM Target: {{ heatmap_target_label }}</span>
+        <span class="heatmap-label">Attribution Target: {{ heatmap_target_label }}</span>
         {% endif %}
         <p class="heatmap-caption">
             This heatmap shows actual gradient-weighted class activation from the trained neural network.
@@ -358,12 +358,6 @@
         <div class="section-body">{{ technique }}</div>
     </div>
 
-    <!-- COMPARISON -->
-    <div class="section">
-        <h2>Comparison</h2>
-        <div class="section-body">{{ comparison }}</div>
-    </div>
-
     <!-- IMAGE QUALITY -->
     <div class="section">
         <h2>Image Quality / Study Limitations</h2>
@@ -381,6 +375,13 @@
         <h2>Impression</h2>
         <div class="section-body">{{ impression }}</div>
     </div>
+
+    {% if doctor_assessment %}
+    <div class="section">
+        <h2>Doctor Clinical Assessment</h2>
+        <div class="section-body">{{ doctor_assessment }}</div>
+    </div>
+    {% endif %}
 
     <!-- DIFFERENTIAL -->
     {% if differential_diagnosis %}

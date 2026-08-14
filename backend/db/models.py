@@ -1,9 +1,10 @@
 """
 MedoraAI — SQLAlchemy ORM Models
-Tables: users, departments, appointments, diagnostic_orders, scans, results, reports, prescriptions, case_studies
+Tables: users, departments, appointments, diagnostic_orders, scans, results,
+reports, prescriptions, pharmacy_bills, case_studies
 """
 
-from sqlalchemy import Column, Integer, String, Float, Text, DateTime, ForeignKey, Boolean
+from sqlalchemy import Column, Integer, String, Float, Text, Date, DateTime, ForeignKey, Boolean, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -36,14 +37,17 @@ class User(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     username = Column(String(50), unique=True, nullable=False, index=True)
     hashed_password = Column(String(255), nullable=False)
-    role = Column(String(20), nullable=False, default="patient")  # patient, doctor, lab_tech, admin
+    role = Column(String(20), nullable=False, default="patient")  # patient, doctor, lab_tech, pharmacy, admin
     full_name = Column(String(150), default="")
     email = Column(String(150), default="")
     phone = Column(String(20), default="")
     specialization = Column(String(100), default="")  # e.g., "Neurologist", "Pulmonologist"
+    qualification = Column(String(150), default="")  # e.g., "MBBS, MD (Medicine)"
     department_id = Column(Integer, ForeignKey("departments.id"), nullable=True)
     avatar_url = Column(String(500), default="")
     is_active = Column(Boolean, default=True)
+    is_available = Column(Boolean, default=True)
+    availability_note = Column(String(250), default="")
     created_at = Column(DateTime, server_default=func.now())
 
     # Relationships
@@ -58,6 +62,8 @@ class User(Base):
                                          foreign_keys="Prescription.patient_id")
     patient_case_studies = relationship("CaseStudy", back_populates="patient",
                                         foreign_keys="CaseStudy.patient_id")
+    patient_pharmacy_bills = relationship("PharmacyBill", back_populates="patient",
+                                          foreign_keys="PharmacyBill.patient_id")
 
     # Doctor relationships
     doctor_appointments = relationship("Appointment", back_populates="doctor",
@@ -70,6 +76,10 @@ class User(Base):
     # Lab tech relationships
     assigned_orders = relationship("DiagnosticOrder", back_populates="assigned_lab_tech",
                                    foreign_keys="DiagnosticOrder.assigned_lab_tech_id")
+
+    # Pharmacy relationships
+    issued_pharmacy_bills = relationship("PharmacyBill", back_populates="pharmacy",
+                                         foreign_keys="PharmacyBill.pharmacy_id")
 
     def __repr__(self):
         return f"<User(id={self.id}, username='{self.username}', role='{self.role}')>"
@@ -234,9 +244,97 @@ class Prescription(Base):
                           foreign_keys=[doctor_id])
     patient = relationship("User", back_populates="patient_prescriptions",
                            foreign_keys=[patient_id])
+    pharmacy_bill = relationship(
+        "PharmacyBill",
+        back_populates="prescription",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
 
     def __repr__(self):
         return f"<Prescription(id={self.id}, doctor={self.doctor_id}, patient={self.patient_id})>"
+
+
+class MedicineCatalog(Base):
+    """Canonical medicines used by prescribers and pharmacy inventory."""
+    __tablename__ = "medicine_catalog"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(200), unique=True, nullable=False, index=True)
+    category = Column(String(100), default="General")
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+    inventories = relationship("PharmacyInventory", back_populates="medicine")
+
+
+class PharmacyInventory(Base):
+    """Current on-hand quantity for one medicine at one pharmacy."""
+    __tablename__ = "pharmacy_inventory"
+    __table_args__ = (
+        UniqueConstraint("pharmacy_id", "medicine_id", name="uq_pharmacy_medicine"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    pharmacy_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    medicine_id = Column(Integer, ForeignKey("medicine_catalog.id"), nullable=False, index=True)
+    quantity = Column(Integer, nullable=False, default=0)
+    expiry_date = Column(Date, nullable=True)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    medicine = relationship("MedicineCatalog", back_populates="inventories")
+    pharmacy = relationship("User", foreign_keys=[pharmacy_id])
+
+
+class PharmacyStockMovement(Base):
+    """Append-only inventory audit trail for restocks and billed sales."""
+    __tablename__ = "pharmacy_stock_movements"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    pharmacy_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    medicine_id = Column(Integer, ForeignKey("medicine_catalog.id"), nullable=False, index=True)
+    movement_type = Column(String(20), nullable=False)  # restock, sale
+    quantity_delta = Column(Integer, nullable=False)
+    balance_after = Column(Integer, nullable=False)
+    reference_bill_id = Column(Integer, ForeignKey("pharmacy_bills.id"), nullable=True)
+    created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+
+    medicine = relationship("MedicineCatalog")
+    reference_bill = relationship("PharmacyBill")
+
+
+class PharmacyBill(Base):
+    """Itemized medicine bill prepared from a doctor's prescription."""
+    __tablename__ = "pharmacy_bills"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    invoice_number = Column(String(40), unique=True, nullable=False, index=True)
+    prescription_id = Column(
+        Integer, ForeignKey("prescriptions.id"), unique=True, nullable=False
+    )
+    patient_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    pharmacy_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    items_json = Column(Text, default="[]")
+    subtotal = Column(Float, nullable=False, default=0.0)
+    tax_percent = Column(Float, nullable=False, default=0.0)
+    tax_amount = Column(Float, nullable=False, default=0.0)
+    total = Column(Float, nullable=False, default=0.0)
+    status = Column(String(20), nullable=False, default="billed")  # billed, dispensed
+    notes = Column(Text, default="")
+    created_at = Column(DateTime, server_default=func.now())
+    dispensed_at = Column(DateTime, nullable=True)
+
+    prescription = relationship("Prescription", back_populates="pharmacy_bill")
+    patient = relationship(
+        "User", back_populates="patient_pharmacy_bills", foreign_keys=[patient_id]
+    )
+    pharmacy = relationship(
+        "User", back_populates="issued_pharmacy_bills", foreign_keys=[pharmacy_id]
+    )
+
+    def __repr__(self):
+        return f"<PharmacyBill(id={self.id}, invoice='{self.invoice_number}')>"
 
 
 class CaseStudy(Base):

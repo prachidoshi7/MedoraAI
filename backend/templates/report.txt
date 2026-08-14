@@ -20,9 +20,6 @@ CLINICAL HISTORY
 TECHNIQUE
 {{ technique }}
 
-COMPARISON
-{{ comparison }}
-
 IMAGE QUALITY / LIMITATIONS
 {{ image_quality }}
 
@@ -31,6 +28,11 @@ FINDINGS
 
 IMPRESSION
 {{ impression }}
+
+{% if doctor_assessment %}
+DOCTOR CLINICAL ASSESSMENT
+{{ doctor_assessment }}
+{% endif %}
 
 DIFFERENTIAL DIAGNOSIS
 {{ differential_diagnosis }}

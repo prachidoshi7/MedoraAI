@@ -38,6 +38,8 @@ class PDFGeneratorTests(unittest.TestCase):
             "methodology": "Classification with Grad-CAM heatmap explainability.",
             "limitations": "Performance is limited to trained categories.",
             "disclaimer": "Clinician verification is required before clinical use.",
+            "doctor_assessment": "Reviewed and approved for the patient record.",
+            "is_final": True,
         }
 
         with tempfile.TemporaryDirectory() as directory:

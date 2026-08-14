@@ -9,7 +9,12 @@ interface ResultPanelProps {
 export default function ResultPanel({ classification, scanType, analysisTimeMs }: ResultPanelProps) {
   const { all_scores, confidence, severity, top_label } = classification;
   const scores = Object.entries(all_scores).sort(([, a], [, b]) => b - a);
-  const modelName = scanType === 'brain_mri' ? 'EfficientNetB3' : 'EfficientNet-B4';
+  const modelName = ({
+    chest_xray: 'RAD-DINO + CheXpert',
+    brain_mri: 'EfficientNetB3',
+    lung_ct: 'Lung CNN',
+    kidney_us: 'Renal CNN',
+  } as Record<string, string>)[scanType] || 'Diagnostic model';
 
   return (
     <aside className="result-panel">

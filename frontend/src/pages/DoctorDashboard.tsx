@@ -14,7 +14,7 @@ export default function DoctorDashboard() {
   const active = appointments.filter((item) => !['completed', 'cancelled'].includes(item.status));
   return (
     <div className="workspace-page portal-page">
-      <header className="portal-hero"><div><p className="eyebrow">{user?.department_name || 'Clinical service'} · Doctor workspace</p><h1>{user?.full_name}</h1><p>One queue from consultation through diagnostic sign-off.</p></div><span className="env-badge"><i /> Clinical systems live</span></header>
+      <header className="portal-hero"><div><p className="eyebrow">{user?.department_name || 'Clinical service'} · Doctor dashboard</p><h1>{user?.full_name}</h1><p className="doctor-credential-line">{[user?.qualification, user?.specialization].filter(Boolean).join(' · ')}</p><p>One queue from consultation through diagnostic sign-off.</p></div><span className="env-badge"><i /> Clinical systems live</span></header>
       {error && <div className="form-error">{error}</div>}
       <section className="metric-grid metric-grid--three">
         <article><span>Active consultations</span><strong>{active.length}</strong><small>{appointments.filter((item) => item.status === 'requested').length} awaiting confirmation</small></article>

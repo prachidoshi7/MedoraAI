@@ -34,8 +34,12 @@ def serialize_user(user) -> dict:
         "email": user.email or "",
         "phone": user.phone or "",
         "specialization": user.specialization or "",
+        "qualification": user.qualification or "",
         "department_id": user.department_id,
         "department_name": user.department.name if user.department else None,
+        "is_active": bool(user.is_active),
+        "is_available": bool(user.is_available),
+        "availability_note": user.availability_note or "",
     }
 
 

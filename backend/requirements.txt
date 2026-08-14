@@ -23,11 +23,12 @@ numpy==1.26.4
 opencv-python-headless==4.10.0.84
 pydicom==2.4.4
 
-# PyTorch classifiers and explainability
-torch==2.3.1
-torchvision==0.18.1
-timm==0.9.16
+# PyTorch classifiers, RAD-DINO and explainability
+torch==2.4.1
+torchvision==0.19.1
 grad-cam==1.5.4
+transformers==5.10.1
+huggingface-hub==1.27.0
 
 # TensorFlow brain MRI classifier
 tensorflow-cpu==2.16.1

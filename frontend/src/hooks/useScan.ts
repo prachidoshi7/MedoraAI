@@ -19,7 +19,7 @@ const STEP_LABELS: Record<AnalysisStep, string> = {
   idle: '',
   uploading: 'Securely uploading the study',
   classifying: 'Reviewing image patterns',
-  generating_heatmap: 'Generating the Grad-CAM heatmap',
+  generating_heatmap: 'Generating the model-attribution heatmap',
   complete: 'Study ready for review',
   error: 'Study processing failed',
 };

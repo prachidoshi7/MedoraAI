@@ -1,65 +1,58 @@
 # Model Files
 
-This directory stores local model artifacts used by the backend.
-
-Expected files:
+This directory contains only the model binaries bundled with MedoraAI:
 
 ```text
-chest_xray_efficientnet_b4.pt
-chest_xray_efficientnet_b4.labels.json
 best_brain_model.keras
 cnn_lung_model.pth
 cnn_Kidney_Stone_model.pth
 ```
 
-`.env` should point to them from the repo root:
+Configure their repo-relative paths in `.env`:
 
 ```env
-CHEST_MODEL_PATH=./models/chest_xray_efficientnet_b4.pt
 BRAIN_MODEL_PATH=./models/best_brain_model.keras
 LUNG_MODEL_PATH=./models/cnn_lung_model.pth
 KIDNEY_MODEL_PATH=./models/cnn_Kidney_Stone_model.pth
 ```
 
-## Chest X-Ray Model
+All three binaries are tracked with Git LFS. Run `git lfs install` before
+cloning and `git lfs pull` when a checkout contains pointer files.
 
-- Architecture: `timm` EfficientNet-B4
-- Backend constructor: `timm.create_model("efficientnet_b4", pretrained=True, num_classes=15)`
-- Weight format: PyTorch `state_dict`
-- Label manifest: `chest_xray_efficientnet_b4.labels.json`
+## Chest X-Ray
 
-The label order must match `backend/services/chest_classifier.py`.
+Chest inference no longer uses the local EfficientNet-B4 artifact. It uses a
+pinned RAD-DINO ViT-B/14 encoder with a 14-label CheXpert classification head:
 
-## Brain MRI Model
+```env
+CHEST_MODEL_ID=kaan-ylmn/rad-dino-chexpert
+CHEST_MODEL_REVISION=db02e1b7234dd83c6d7c4485963ef5b22df9e5db
+CHEST_DEVICE=auto
+CHEST_PATHOLOGY_THRESHOLD=0.50
+CHEST_SECONDARY_THRESHOLD=0.35
+```
+
+The first backend startup downloads the approximately 346 MB checkpoint to the
+Hugging Face cache. The revision is immutable, and MedoraAI defines the reviewed
+model architecture locally instead of executing remote Python. For an offline
+deployment, populate the cache first and set:
+
+```env
+CHEST_MODEL_LOCAL_FILES_ONLY=true
+```
+
+RAD-DINO and this application are research decision-support components, not
+certified medical devices. Model scores and attribution maps require clinician
+review.
+
+## Brain MRI
 
 - Architecture: EfficientNetB3, four classes
 - Classes: Glioma, Meningioma, No Tumor, Pituitary
 - Weight format: Keras `.keras`
-- Loaded by `backend/services/brain_classifier.py`
-
-All runtime model binaries in this directory are tracked with Git LFS. Run
-`git lfs install` before cloning and `git lfs pull` if a checkout contains
-pointer files. The incompatible legacy MobileNet artifact is intentionally
-excluded from the runnable repository.
 
 ## Lung CT and Kidney Ultrasound
 
-The two compact PyTorch state dictionaries are committed under `models/` and
-load automatically after a normal clone. Their model architectures live in
-`backend/services/lung_classifier.py` and `backend/services/kidney_classifier.py`.
-
-## Importing A Chest Export Zip
-
-If `medoraai_chest_xray_model_export.zip` exists in the repo root:
-
-```powershell
-Expand-Archive -LiteralPath .\medoraai_chest_xray_model_export.zip -DestinationPath . -Force
-```
-
-Then verify:
-
-```powershell
-Get-ChildItem .\models
-```
-
-Do not commit large model artifacts unless the team explicitly decides to version them.
+The compact PyTorch state dictionaries load through the architectures in
+`backend/services/lung_classifier.py` and
+`backend/services/kidney_classifier.py`.

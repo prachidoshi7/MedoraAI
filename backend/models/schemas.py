@@ -3,9 +3,9 @@ MedoraAI — Pydantic Request/Response Schemas
 Defines all API contracts for the REST endpoints.
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, Literal
-from datetime import datetime
+from datetime import date, datetime
 
 
 # ============================================================
@@ -27,13 +27,17 @@ class LoginResponse(BaseModel):
 class UserSummary(BaseModel):
     id: int
     username: str
-    role: Literal["patient", "doctor", "lab_tech", "admin"]
+    role: Literal["patient", "doctor", "lab_tech", "pharmacy", "admin"]
     full_name: str = ""
     email: str = ""
     phone: str = ""
     specialization: str = ""
+    qualification: str = ""
     department_id: Optional[int] = None
     department_name: Optional[str] = None
+    is_active: bool = True
+    is_available: bool = True
+    availability_note: str = ""
 
 
 class RegisterRequest(BaseModel):
@@ -53,6 +57,29 @@ class DepartmentResponse(BaseModel):
 
 class DoctorResponse(UserSummary):
     department: Optional[DepartmentResponse] = None
+
+
+class DoctorCreate(BaseModel):
+    username: str = Field(..., min_length=3, max_length=50, pattern=r"^[a-zA-Z0-9._-]+$")
+    password: str = Field(..., min_length=6, max_length=128)
+    full_name: str = Field(..., min_length=2, max_length=150)
+    qualification: str = Field(..., min_length=2, max_length=150)
+    specialization: str = Field(..., min_length=2, max_length=100)
+    department_id: int
+    email: str = Field(default="", max_length=150)
+    phone: str = Field(default="", max_length=20)
+
+
+class DoctorUpdate(BaseModel):
+    full_name: Optional[str] = Field(default=None, min_length=2, max_length=150)
+    qualification: Optional[str] = Field(default=None, min_length=2, max_length=150)
+    specialization: Optional[str] = Field(default=None, min_length=2, max_length=100)
+    department_id: Optional[int] = None
+    email: Optional[str] = Field(default=None, max_length=150)
+    phone: Optional[str] = Field(default=None, max_length=20)
+    is_available: Optional[bool] = None
+    availability_note: Optional[str] = Field(default=None, max_length=250)
+    is_active: Optional[bool] = None
 
 
 # ============================================================
@@ -114,10 +141,13 @@ class DiagnosticOrderResponse(BaseModel):
 
 
 class Medication(BaseModel):
+    medicine_id: Optional[int] = None
     name: str = Field(..., min_length=1, max_length=200)
     dosage: str = Field(default="", max_length=100)
     frequency: str = Field(default="", max_length=100)
     duration: str = Field(default="", max_length=100)
+    suggested_quantity: Optional[int] = Field(default=None, ge=1, le=1000)
+    quantity_basis: str = Field(default="", max_length=200)
 
 
 class PrescriptionCreate(BaseModel):
@@ -144,6 +174,96 @@ class PrescriptionResponse(BaseModel):
     instructions: str
     diagnosis: str
     created_at: Optional[datetime] = None
+
+
+class PharmacyCartItemCreate(BaseModel):
+    medication_index: int = Field(..., ge=0, le=29)
+    quantity: int = Field(..., ge=1, le=1000)
+    unit_price: float = Field(..., ge=0, le=1000000, allow_inf_nan=False)
+
+
+class PharmacyBillCreate(BaseModel):
+    prescription_id: int
+    items: list[PharmacyCartItemCreate] = Field(..., min_length=1, max_length=30)
+    tax_percent: float = Field(default=18, ge=0, le=100, allow_inf_nan=False)
+    notes: str = Field(default="", max_length=2000)
+
+
+class PharmacyBillItem(BaseModel):
+    medication_index: int
+    medicine_id: Optional[int] = None
+    name: str
+    dosage: str = ""
+    frequency: str = ""
+    duration: str = ""
+    quantity: int
+    unit_price: float
+    line_total: float
+
+
+class PharmacyBillResponse(BaseModel):
+    id: int
+    invoice_number: str
+    prescription: PrescriptionResponse
+    patient: UserSummary
+    pharmacy: UserSummary
+    items: list[PharmacyBillItem]
+    subtotal: float
+    tax_percent: float
+    tax_amount: float
+    total: float
+    status: Literal["billed", "dispensed"]
+    notes: str
+    created_at: Optional[datetime] = None
+    dispensed_at: Optional[datetime] = None
+
+
+class PharmacyQueueItem(BaseModel):
+    prescription: PrescriptionResponse
+    bill: Optional[PharmacyBillResponse] = None
+
+
+class MedicineResponse(BaseModel):
+    id: int
+    name: str
+    category: str
+
+
+class PharmacyInventoryResponse(BaseModel):
+    id: int
+    medicine: MedicineResponse
+    current_quantity: int
+    expiry_date: Optional[date] = None
+    updated_at: Optional[datetime] = None
+
+
+class PharmacyRestockRequest(BaseModel):
+    medicine_id: int
+    new_quantity: int = Field(..., ge=1, le=1000000)
+    expiry_date: Optional[date] = None
+
+
+class PharmacyRestockResponse(BaseModel):
+    inventory: PharmacyInventoryResponse
+    previous_quantity: int
+    added_quantity: int
+    total_quantity: int
+
+
+class PharmacyCsvImportRow(BaseModel):
+    row_number: int
+    medicine: MedicineResponse
+    previous_quantity: int
+    added_quantity: int
+    total_quantity: int
+    expiry_date: date
+
+
+class PharmacyCsvImportResponse(BaseModel):
+    rows_processed: int
+    medicines_updated: int
+    total_units_added: int
+    rows: list[PharmacyCsvImportRow]
 
 
 class CaseStudyGenerate(BaseModel):
@@ -185,8 +305,8 @@ class CaseStudyResponse(BaseModel):
 
 
 class DoctorReviewRequest(BaseModel):
-    edited_findings: Optional[str] = None
-    edited_impression: Optional[str] = None
+    model_config = ConfigDict(extra="forbid")
+
     doctor_notes: str = Field(default="", max_length=10000)
     approve: bool = True
 
@@ -260,7 +380,6 @@ class ReportData(BaseModel):
     all_scores: dict[str, float] = Field(default_factory=dict)
     clinical_history: str = "Not provided."
     technique: str = ""
-    comparison: str = "No prior imaging was supplied for comparison."
     image_quality: str = ""
     findings: str
     impression: str
@@ -274,6 +393,7 @@ class ReportData(BaseModel):
     is_low_confidence: bool = False
     methodology: str = ""
     limitations: str = ""
+    doctor_assessment: str = ""
 
 
 class ReportResponse(BaseModel):
@@ -282,16 +402,9 @@ class ReportResponse(BaseModel):
 
 
 class PDFRequest(BaseModel):
-    """Optional edited report text for PDF generation."""
-    edited_clinical_history: Optional[str] = None
-    edited_technique: Optional[str] = None
-    edited_comparison: Optional[str] = None
-    edited_image_quality: Optional[str] = None
-    edited_findings: Optional[str] = None
-    edited_impression: Optional[str] = None
-    edited_differential_diagnosis: Optional[str] = None
-    edited_recommendations: Optional[str] = None
-    edited_critical_communication: Optional[str] = None
+    """Reserved request body; generated report sections are read-only."""
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class PatientSummaryRequest(BaseModel):

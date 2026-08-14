@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { downloadPdf, regenerateReport, reviewReport, triggerPdfDownload } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
-import type { PDFRequest, ReportData } from '../types';
+import type { ReportData } from '../types';
 
 interface ReportEditorProps {
   scanId: string;
@@ -12,7 +12,6 @@ interface ReportEditorProps {
 type DraftKey =
   | 'clinical_history'
   | 'technique'
-  | 'comparison'
   | 'image_quality'
   | 'findings'
   | 'impression'
@@ -54,17 +53,8 @@ const reportSections: ReportSection[] = [
     size: 'medium',
   },
   {
-    key: 'comparison',
-    number: '03',
-    title: 'Comparison',
-    shortTitle: 'Comparison',
-    helper: 'Name the prior study and date, or state that no prior imaging is available.',
-    group: 'Study context',
-    size: 'small',
-  },
-  {
     key: 'image_quality',
-    number: '04',
+    number: '03',
     title: 'Study quality / limitations',
     shortTitle: 'Quality',
     helper: 'State diagnostic adequacy and any motion, positioning, coverage, or single-image limitation.',
@@ -73,7 +63,7 @@ const reportSections: ReportSection[] = [
   },
   {
     key: 'findings',
-    number: '05',
+    number: '04',
     title: 'Findings',
     shortTitle: 'Findings',
     helper: 'Describe only what is visible, organized by anatomy. Keep diagnoses and differential weighting out of this section.',
@@ -82,7 +72,7 @@ const reportSections: ReportSection[] = [
   },
   {
     key: 'impression',
-    number: '06',
+    number: '05',
     title: 'Impression',
     shortTitle: 'Impression',
     helper: 'Number conclusions by clinical priority. This is where diagnostic language belongs.',
@@ -92,7 +82,7 @@ const reportSections: ReportSection[] = [
   },
   {
     key: 'differential_diagnosis',
-    number: '07',
+    number: '06',
     title: 'Differential considerations',
     shortTitle: 'Differential',
     helper: 'Keep the list short, evidence-based, and ordered from favored to less likely.',
@@ -101,7 +91,7 @@ const reportSections: ReportSection[] = [
   },
   {
     key: 'recommendations',
-    number: '08',
+    number: '07',
     title: 'Recommendations',
     shortTitle: 'Recommendations',
     helper: 'Include only proportionate, actionable follow-up supported by the imaging interpretation.',
@@ -110,7 +100,7 @@ const reportSections: ReportSection[] = [
   },
   {
     key: 'critical_communication',
-    number: '09',
+    number: '08',
     title: 'Communication',
     shortTitle: 'Communication',
     helper: 'For urgent findings, record the recipient, method, date, and time. Use N/A for routine findings.',
@@ -130,7 +120,6 @@ const makeDraft = (report: ReportData): ReportDraft => {
   return {
     clinical_history: report.clinical_history || 'Not provided.',
     technique: report.technique || '',
-    comparison: report.comparison || 'No prior imaging was supplied for comparison.',
     image_quality: report.image_quality || '',
     findings: report.findings || '',
     impression: report.impression || '',
@@ -187,7 +176,8 @@ function AutoGrowTextarea({
 
 export default function ReportEditor({ scanId, report, onReportChange }: ReportEditorProps) {
   const { user } = useAuth();
-  const canEdit = user?.role === 'doctor' || user?.role === 'admin';
+  const canReview = user?.role === 'doctor' || user?.role === 'admin';
+  const canRegenerate = user?.role === 'admin';
   const original = useMemo(() => makeDraft(report), [report]);
   const [draft, setDraft] = useState<ReportDraft>(original);
   const [downloading, setDownloading] = useState(false);
@@ -198,15 +188,10 @@ export default function ReportEditor({ scanId, report, onReportChange }: ReportE
   const [approved, setApproved] = useState(false);
 
   useEffect(() => setDraft(original), [original]);
+  useEffect(() => setDoctorNotes(report.doctor_assessment || ''), [report.doctor_assessment]);
 
-  const editedSections = (Object.keys(original) as DraftKey[]).filter((key) => draft[key] !== original[key]);
-  const edited = editedSections.length > 0;
   const communicationIsRoutine = isRoutineCommunication(draft.critical_communication);
   const examName = ({ brain_mri: 'Limited brain MRI image', chest_xray: 'Chest radiograph', lung_ct: 'Limited lung CT image', kidney_us: 'Kidney ultrasound image' } as Record<string, string>)[report.scan_type] || 'Medical imaging study';
-
-  const change = (key: DraftKey, value: string) => {
-    if (canEdit) setDraft((current) => ({ ...current, [key]: value }));
-  };
 
   const jumpToSection = (key: DraftKey) => {
     document.getElementById(`report-section-${key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -228,19 +213,8 @@ export default function ReportEditor({ scanId, report, onReportChange }: ReportE
   const download = async () => {
     setDownloading(true);
     setError('');
-    const edits: PDFRequest = {
-      edited_clinical_history: draft.clinical_history,
-      edited_technique: draft.technique,
-      edited_comparison: draft.comparison,
-      edited_image_quality: draft.image_quality,
-      edited_findings: draft.findings,
-      edited_impression: draft.impression,
-      edited_differential_diagnosis: draft.differential_diagnosis,
-      edited_recommendations: draft.recommendations,
-      edited_critical_communication: draft.critical_communication,
-    };
     try {
-      const blob = await downloadPdf(scanId, canEdit ? edits : undefined);
+      const blob = await downloadPdf(scanId);
       triggerPdfDownload(blob, scanId);
     } catch {
       setError('The PDF could not be prepared. Please try again.');
@@ -254,8 +228,6 @@ export default function ReportEditor({ scanId, report, onReportChange }: ReportE
     setError('');
     try {
       const result = await reviewReport(scanId, {
-        edited_findings: draft.findings,
-        edited_impression: draft.impression,
         doctor_notes: doctorNotes,
         approve: true,
       });
@@ -282,8 +254,7 @@ export default function ReportEditor({ scanId, report, onReportChange }: ReportE
           <p>Review every section against the complete source examination before signing.</p>
         </div>
         <div className="report-header-actions">
-          {canEdit && edited && <button className="text-button" onClick={() => setDraft(original)}>Discard edits</button>}
-          {canEdit && <button className="button button--secondary" onClick={() => void regenerate()} disabled={regenerating || downloading}>
+          {canRegenerate && <button className="button button--secondary" onClick={() => void regenerate()} disabled={regenerating || downloading}>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 7v5h-5M5 17v-5h5M7.1 8.2A6 6 0 0 1 18.5 10M5.5 14a6 6 0 0 0 11.4 1.8" /></svg>
             {regenerating ? 'Regenerating…' : 'Regenerate draft'}
           </button>}
@@ -349,6 +320,7 @@ export default function ReportEditor({ scanId, report, onReportChange }: ReportE
                       <div>
                         <div className="report-field__title-row">
                           <h3>{section.title}</h3>
+                          <span className="report-readonly-badge">Read only</span>
                           {section.prominent && <span className="report-priority-badge">Priority order</span>}
                           {isCommunication && (
                             <span className={`communication-state${communicationIsRoutine ? '' : ' communication-state--critical'}`}>
@@ -360,7 +332,7 @@ export default function ReportEditor({ scanId, report, onReportChange }: ReportE
                       </div>
                     </header>
                     <div className="report-field__editor">
-                      <AutoGrowTextarea section={section} value={draft[section.key]} onChange={(value) => change(section.key, value)} readOnly={!canEdit} />
+                      <AutoGrowTextarea section={section} value={draft[section.key]} onChange={() => undefined} readOnly />
                     </div>
                   </article>
                 );
@@ -385,7 +357,7 @@ export default function ReportEditor({ scanId, report, onReportChange }: ReportE
         <details className="report-provenance">
           <summary>Method and known limitations</summary>
           <div>
-            <p><strong>Method</strong>{report.methodology || 'Automated image classification with Grad-CAM heatmap explainability.'}</p>
+            <p><strong>Method</strong>{report.methodology || 'Automated image classification with model-attribution heatmap explainability.'}</p>
             <p><strong>Limitations</strong>{report.limitations || 'The output is limited by the supplied image and the trained finding categories.'}</p>
           </div>
         </details>
@@ -397,7 +369,7 @@ export default function ReportEditor({ scanId, report, onReportChange }: ReportE
       </div>
 
       {error && <div className="form-error" role="alert">{error}</div>}
-      {canEdit && (
+      {canReview && (
         <div className="doctor-review-strip">
           <label><span>Doctor assessment / sign-off note</span><textarea rows={2} value={doctorNotes} onChange={(event) => setDoctorNotes(event.target.value)} placeholder="Add your clinical judgment or communication note…" /></label>
           <button className="button button--primary" onClick={() => void approve()} disabled={approving || approved}>{approved ? 'Approved & sent' : approving ? 'Approving…' : 'Approve & release to patient'}</button>
@@ -405,8 +377,8 @@ export default function ReportEditor({ scanId, report, onReportChange }: ReportE
       )}
       <footer className="report-actions">
         <div>
-          <span className={`edit-state${edited ? ' is-edited' : ''}`}><i />{canEdit ? (edited ? `${editedSections.length} section${editedSections.length === 1 ? '' : 's'} edited` : 'Generated draft') : 'Read-only clinical record'}</span>
-          <small>{canEdit ? (edited ? 'Edits will be included in the PDF.' : 'Verification and signature are still required.') : 'Only the treating clinician can modify this report.'}</small>
+          <span className="edit-state"><i /> Read-only generated report</span>
+          <small>{canReview ? 'Only the doctor clinical assessment above can be edited before approval.' : 'Generated report sections cannot be modified.'}</small>
         </div>
         <button className="button button--primary" onClick={() => void download()} disabled={downloading || regenerating}>
           <span>{downloading ? 'Preparing PDF…' : 'Download clinical PDF'}</span>

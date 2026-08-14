@@ -12,7 +12,14 @@ services:
     environment:
       - SECRET_KEY=${SECRET_KEY:-medoraai-hackathon-secret}
       - DATA_DIR=/app/data
-      - CHEST_MODEL_PATH=/app/models/chest_xray_efficientnet_b4.pt
+      - CHEST_MODEL_ID=${CHEST_MODEL_ID:-kaan-ylmn/rad-dino-chexpert}
+      - CHEST_MODEL_REVISION=${CHEST_MODEL_REVISION:-db02e1b7234dd83c6d7c4485963ef5b22df9e5db}
+      - CHEST_MODEL_CACHE_DIR=/app/data/huggingface
+      - CHEST_MODEL_LOCAL_FILES_ONLY=${CHEST_MODEL_LOCAL_FILES_ONLY:-false}
+      - CHEST_DEVICE=${CHEST_DEVICE:-auto}
+      - CHEST_PATHOLOGY_THRESHOLD=${CHEST_PATHOLOGY_THRESHOLD:-0.50}
+      - CHEST_SECONDARY_THRESHOLD=${CHEST_SECONDARY_THRESHOLD:-0.35}
+      - HF_TOKEN=${HF_TOKEN:-}
       - BRAIN_MODEL_PATH=/app/models/best_brain_model.keras
       - LUNG_MODEL_PATH=/app/models/cnn_lung_model.pth
       - KIDNEY_MODEL_PATH=/app/models/cnn_Kidney_Stone_model.pth
@@ -35,6 +42,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 10m
 
   frontend:
     build:

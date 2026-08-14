@@ -96,7 +96,6 @@ async def get_report(
             all_scores=report_data.get("all_scores", {}),
             clinical_history=report_data.get("clinical_history", "Not provided."),
             technique=report_data.get("technique", ""),
-            comparison=report_data.get("comparison", "No prior imaging was supplied for comparison."),
             image_quality=report_data.get("image_quality", ""),
             findings=findings,
             impression=impression,
@@ -110,6 +109,7 @@ async def get_report(
             is_low_confidence=report_data.get("is_low_confidence", False),
             methodology=report_data.get("methodology", ""),
             limitations=report_data.get("limitations", ""),
+            doctor_assessment=report.doctor_notes or "",
         ),
     )
 
@@ -126,8 +126,8 @@ async def regenerate_report(
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
     ensure_scan_access(current_user, scan)
-    if current_user.role not in {"doctor", "admin"}:
-        raise HTTPException(status_code=403, detail="Only doctors can regenerate reports")
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Only an administrator can regenerate reports")
     stored_result = crud.get_result_by_scan(db, scan_id)
     if not stored_result:
         raise HTTPException(status_code=409, detail="Analyze the scan before generating a report")
@@ -198,7 +198,7 @@ async def download_pdf(
     """
     Generate and download a PDF report.
     
-    Accepts optional edited findings/impression/recommendations.
+    Generated clinical sections are read-only; this endpoint exports the stored report.
     Returns PDF binary with Content-Disposition: attachment for auto-download.
     """
     scan = crud.get_scan(db, scan_id)
@@ -213,14 +213,6 @@ async def download_pdf(
     if current_user.role == "patient" and not report.doctor_approved_at:
         raise HTTPException(status_code=409, detail="Report is awaiting doctor approval")
 
-    if current_user.role not in {"doctor", "admin"} and pdf_request:
-        has_edits = any(
-            value is not None
-            for value in pdf_request.model_dump().values()
-        )
-        if has_edits:
-            raise HTTPException(status_code=403, detail="Only doctors can edit a clinical report")
-
     try:
         report_data = json.loads(report.report_json)
     except json.JSONDecodeError:
@@ -229,66 +221,26 @@ async def download_pdf(
         report_data,
         report_data.get("scan_type", scan.scan_type),
     )
+    report_data["doctor_assessment"] = report.doctor_notes or ""
+    report_data["is_final"] = bool(report.doctor_approved_at)
 
-    # Save edits if provided
-    if pdf_request:
-        if pdf_request.edited_findings or pdf_request.edited_impression:
-            crud.update_report_edits(
-                db, scan_id,
-                edited_findings=pdf_request.edited_findings,
-                edited_impression=pdf_request.edited_impression,
-            )
-
-    # Generate PDF with edits applied
+    # Generate the stored report without client-side field overrides.
     pdf_generator = request.app.state.pdf_generator
 
     try:
-        edited_findings = None
-        edited_impression = None
-        edited_recommendations = None
-
-        if pdf_request:
-            edited_clinical_history = pdf_request.edited_clinical_history
-            edited_technique = pdf_request.edited_technique
-            edited_comparison = pdf_request.edited_comparison
-            edited_image_quality = pdf_request.edited_image_quality
-            edited_findings = pdf_request.edited_findings
-            edited_impression = pdf_request.edited_impression
-            edited_differential_diagnosis = pdf_request.edited_differential_diagnosis
-            edited_recommendations = pdf_request.edited_recommendations
-            edited_critical_communication = pdf_request.edited_critical_communication
-        else:
-            edited_clinical_history = None
-            edited_technique = None
-            edited_comparison = None
-            edited_image_quality = None
-            edited_differential_diagnosis = None
-            edited_critical_communication = None
-
         # Also check DB for previously saved edits
-        if not edited_findings and report.edited_findings:
-            edited_findings = report.edited_findings
-        if not edited_impression and report.edited_impression:
-            edited_impression = report.edited_impression
+        if report.edited_findings:
+            report_data["findings"] = report.edited_findings
+        if report.edited_impression:
+            report_data["impression"] = report.edited_impression
 
         # Resolve heatmap path for PDF embedding
         heatmap_path = os.path.join(settings.heatmaps_dir, f"{scan_id}.png")
         if not os.path.exists(heatmap_path):
             heatmap_path = ""
 
-        pdf_bytes = pdf_generator.generate_pdf_with_edits(
-            report_data=report_data,
-            scan_id=scan_id,
-            edited_clinical_history=edited_clinical_history,
-            edited_technique=edited_technique,
-            edited_comparison=edited_comparison,
-            edited_image_quality=edited_image_quality,
-            edited_findings=edited_findings,
-            edited_impression=edited_impression,
-            edited_differential_diagnosis=edited_differential_diagnosis,
-            edited_recommendations=edited_recommendations,
-            edited_critical_communication=edited_critical_communication,
-            heatmap_path=heatmap_path,
+        pdf_bytes = pdf_generator.generate_pdf(
+            report_data=report_data, scan_id=scan_id, heatmap_path=heatmap_path
         )
 
         filename = f"MedoraAI_Report_{scan_id[:8]}.pdf"
@@ -319,7 +271,7 @@ async def doctor_review(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    """Apply a clinician's edits and optionally sign off the AI draft."""
+    """Add the clinician assessment and optionally sign off the AI draft."""
     if current_user.role not in {"doctor", "admin"}:
         raise HTTPException(status_code=403, detail="Only doctors can review reports")
     scan = crud.get_scan(db, scan_id)
@@ -329,10 +281,6 @@ async def doctor_review(
     report = crud.get_report_by_scan(db, scan_id)
     if not report:
         raise HTTPException(status_code=404, detail="Report not yet generated")
-    if payload.edited_findings is not None:
-        report.edited_findings = payload.edited_findings
-    if payload.edited_impression is not None:
-        report.edited_impression = payload.edited_impression
     report.doctor_notes = payload.doctor_notes
     report.reviewed_by_doctor_id = current_user.id
     report.doctor_approved_at = datetime.now(timezone.utc) if payload.approve else None

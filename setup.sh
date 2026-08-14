@@ -21,7 +21,7 @@ Next steps:
   1. Add an LLM API key to .env if available. Groq is the recommended first option.
   2. Backend local dev:
        cd backend
-       pip install torch==2.3.1 torchvision==0.18.1 --index-url https://download.pytorch.org/whl/cpu
+       pip install torch==2.4.1 torchvision==0.19.1 --index-url https://download.pytorch.org/whl/cpu
        pip install -r requirements.txt
        uvicorn main:app --reload --port 8000
   3. Frontend local dev:

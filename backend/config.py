@@ -30,10 +30,22 @@ class Settings(BaseSettings):
     DATA_DIR: str = Field(default="./data", description="Root directory for runtime data")
 
     # --- ML Models ---
-    CHEST_MODEL_PATH: Optional[str] = Field(
-        default="models/chest_xray_efficientnet_b4.pt",
-        description="Path to fine-tuned chest X-ray model weights (.pt)."
+    CHEST_MODEL_ID: str = Field(
+        default="kaan-ylmn/rad-dino-chexpert",
+        description="Hugging Face RAD-DINO checkpoint with a CheXpert classification head.",
     )
+    CHEST_MODEL_REVISION: str = Field(
+        default="db02e1b7234dd83c6d7c4485963ef5b22df9e5db",
+        description="Immutable Hugging Face revision used for reproducible chest inference.",
+    )
+    CHEST_MODEL_CACHE_DIR: Optional[str] = Field(
+        default=None,
+        description="Optional Hugging Face cache directory. Uses the standard HF cache when blank.",
+    )
+    CHEST_MODEL_LOCAL_FILES_ONLY: bool = False
+    CHEST_DEVICE: str = Field(default="auto", description="auto, cpu, or cuda")
+    CHEST_PATHOLOGY_THRESHOLD: float = Field(default=0.50, ge=0.0, le=1.0)
+    CHEST_SECONDARY_THRESHOLD: float = Field(default=0.35, ge=0.0, le=1.0)
     BRAIN_MODEL_PATH: Optional[str] = Field(
         default="models/best_brain_model.keras",
         description="Path to brain tumor model (.keras). EfficientNetB3 4-class classifier."
@@ -154,12 +166,12 @@ class Settings(BaseSettings):
         return os.path.abspath(os.path.join(PROJECT_ROOT, path))
 
     @property
-    def chest_model_path(self) -> Optional[str]:
-        return self.resolve_path(self.CHEST_MODEL_PATH)
-
-    @property
     def brain_model_path(self) -> Optional[str]:
         return self.resolve_path(self.BRAIN_MODEL_PATH)
+
+    @property
+    def chest_model_cache_dir(self) -> Optional[str]:
+        return self.resolve_path(self.CHEST_MODEL_CACHE_DIR)
 
     @property
     def lung_model_path(self) -> Optional[str]:

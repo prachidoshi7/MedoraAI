@@ -14,6 +14,27 @@ from routers.workflow_utils import prescription_payload
 router = APIRouter()
 
 
+def _catalog_medications(db: Session, medications) -> list[dict]:
+    normalized = []
+    for item in medications:
+        if item.medicine_id is None:
+            raise HTTPException(
+                status_code=422,
+                detail="Select every medicine from the medicine catalog",
+            )
+        catalog_item = crud.get_medicine(db, item.medicine_id)
+        if not catalog_item or not catalog_item.is_active:
+            raise HTTPException(status_code=422, detail="Selected medicine is unavailable")
+        normalized.append({
+            "medicine_id": catalog_item.id,
+            "name": catalog_item.name,
+            "dosage": item.dosage,
+            "frequency": item.frequency,
+            "duration": item.duration,
+        })
+    return normalized
+
+
 @router.post("", response_model=PrescriptionResponse, status_code=201)
 async def create_prescription(
     payload: PrescriptionCreate,
@@ -34,10 +55,10 @@ async def create_prescription(
     prescription = crud.create_prescription(
         db,
         appointment_id=appointment.id,
-        doctor_id=current_user.id,
+        doctor_id=appointment.doctor_id if current_user.role == "admin" else current_user.id,
         patient_id=appointment.patient_id,
         scan_id=payload.scan_id,
-        medications=[item.model_dump() for item in payload.medications],
+        medications=_catalog_medications(db, payload.medications),
         instructions=payload.instructions,
         diagnosis=payload.diagnosis,
     )
@@ -72,7 +93,7 @@ async def patient_prescriptions(
 ):
     if current_user.role == "patient" and current_user.id != patient_id:
         raise HTTPException(status_code=403, detail="Access denied")
-    if current_user.role == "lab_tech":
+    if current_user.role not in {"patient", "doctor", "admin"}:
         raise HTTPException(status_code=403, detail="Access denied")
     return [
         prescription_payload(item)
@@ -95,7 +116,7 @@ async def update_prescription(
     ):
         raise HTTPException(status_code=403, detail="Only the prescribing doctor can edit this")
     if payload.medications is not None:
-        prescription.medications = json.dumps([item.model_dump() for item in payload.medications])
+        prescription.medications = json.dumps(_catalog_medications(db, payload.medications))
     if payload.instructions is not None:
         prescription.instructions = payload.instructions
     if payload.diagnosis is not None:
