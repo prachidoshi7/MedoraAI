@@ -43,7 +43,7 @@ export default function PatientDashboard() {
     }
   };
   return (
-    <div className="workspace-page portal-page">
+    <div className="workspace-page portal-page patient-dashboard-page">
       <header className="portal-hero">
         <div><p className="eyebrow">Patient command center</p><h1>Good day, {user?.full_name.split(' ')[0]}.</h1><p>Your consultations, diagnostics, prescriptions, and case records—connected.</p></div>
         <Link className="button button--primary" to="/patient/book-appointment">＋ Book appointment</Link>
@@ -56,15 +56,15 @@ export default function PatientDashboard() {
         <article><span>Medicine bills</span><strong>{bills.length}</strong><small>{bills.filter((bill) => bill.status === 'dispensed').length} orders dispensed</small></article>
         <article><span>Final case studies</span><strong>{cases.filter((item) => item.status === 'final').length}</strong><small>Portable health records</small></article>
       </section>
-      <div className="portal-columns">
+      <div className="portal-columns patient-dashboard-grid">
         <section className="portal-card">
           <header><div><p className="eyebrow">Care timeline</p><h2>Appointments</h2></div><Link to="/patient/book-appointment">Book new →</Link></header>
           <div className="record-list">
             {appointments.length ? appointments.map((item) => (
-              <article key={item.id} className="record-row">
+              <article key={item.id} className="record-row appointment-record">
                 <span className={`status-dot status-${item.status}`} />
-                <div><strong>{item.doctor.full_name}</strong><small>{[item.doctor.qualification, item.doctor.specialization, item.department?.name].filter(Boolean).join(' · ')}</small><small>{dateLabel(item.scheduled_at)}</small><p>{item.reason}</p></div>
-                <span className="status-pill">{item.status.replace('_', ' ')}</span>
+                <div><strong>{item.doctor.full_name}</strong><small className="appointment-credentials">{[item.doctor.qualification, item.doctor.specialization, item.department?.name].filter(Boolean).join(' · ')}</small><small className="appointment-date">{dateLabel(item.scheduled_at)}</small>{item.reason && <p className="record-note"><span>Reason</span>{item.reason}</p>}</div>
+                <span className={`status-pill appointment-status appointment-status--${item.status}`}>{item.status.replace('_', ' ')}</span>
               </article>
             )) : <div className="portal-empty">No appointments yet. Choose a department to begin.</div>}
           </div>
@@ -75,16 +75,16 @@ export default function PatientDashboard() {
             {cases.map((item) => <Link key={`case-${item.id}`} to={`/patient/case-study/${item.id}`} className="record-row record-row--link"><span className="record-icon">CS</span><div><strong>Case study #{item.id}</strong><small>{item.status} · {item.scan_ids.length} linked scans</small><p>{item.diagnosis || item.chief_complaint}</p></div><span>→</span></Link>)}
             {orders.filter((item) => item.scan_id && item.status === 'reviewed').map((item) => {
               const scanId = item.scan_id as string;
-              return <article key={`scan-${item.id}`} className="record-row patient-report-record"><span className="record-icon">AI</span><div><strong>{item.scan_type.replace('_', ' ').toUpperCase()} · Final report</strong><small>Doctor approved · ordered by {item.ordering_doctor.full_name}</small><p>{item.clinical_notes}</p></div><div className="patient-report-actions"><Link className="button" to={`/results/${scanId}`}>View report</Link><button className="button button--primary" disabled={downloadingScanId === scanId} onClick={() => void downloadFinalReport(scanId)}>{downloadingScanId === scanId ? 'Downloading…' : 'Download full report'}</button></div></article>;
+              return <article key={`scan-${item.id}`} className="record-row patient-report-record"><span className="record-icon">AI</span><div><strong>{item.scan_type.replace('_', ' ').toUpperCase()} · Final report</strong><span className="approval-line"><i>✓</i> Doctor approved</span><small>Ordered by {item.ordering_doctor.full_name}</small>{item.clinical_notes && <p className="record-note"><span>Clinical note</span>{item.clinical_notes}</p>}</div><div className="patient-report-actions"><Link className="button" to={`/results/${scanId}`}>View report</Link><button className="button button--primary" disabled={downloadingScanId === scanId} onClick={() => void downloadFinalReport(scanId)}>{downloadingScanId === scanId ? 'Downloading…' : 'Download report'}</button></div></article>;
             })}
             {!cases.length && !orders.some((item) => item.scan_id && item.status === 'reviewed') && <div className="portal-empty">Doctor-approved reports will appear here.</div>}
           </div>
         </section>
       </div>
-      <section className="portal-card patient-medicine-card">
+      <section className="portal-card patient-medicine-card patient-medicine-card--full">
         <header><div><p className="eyebrow">Prescription to pharmacy</p><h2>Medicines and bills</h2></div><span className="status-pill">Shared by your medicine shop</span></header>
         <div className="record-list">
-          {bills.map((bill) => <Link key={`bill-${bill.id}`} to={`/medicine-bills/${bill.id}`} className="record-row record-row--link"><span className="record-icon">₹</span><div><strong>{bill.invoice_number} · {currency.format(bill.total)}</strong><small>{bill.pharmacy.full_name} · {bill.status}</small><p>{bill.items.map((item) => item.name).join(', ')}</p></div><span>View bill →</span></Link>)}
+          {bills.map((bill) => <Link key={`bill-${bill.id}`} to={`/medicine-bills/${bill.id}`} className="record-row record-row--link medicine-bill-record"><span className="record-icon">₹</span><div><strong>{bill.invoice_number} · {currency.format(bill.total)}</strong><small>{bill.pharmacy.full_name} · <b>{bill.status}</b></small><p>{bill.items.map((item) => item.name).join(', ')}</p></div><span>View bill →</span></Link>)}
           {prescriptions.filter((prescription) => !billedPrescriptionIds.has(prescription.id)).map((prescription) => <article key={`rx-${prescription.id}`} className="record-row"><span className="record-icon">Rx</span><div><strong>{prescription.medications.map((item) => item.name).join(', ') || `Prescription #${prescription.id}`}</strong><small>{prescription.doctor.full_name} · sent to medicine shop</small><p>Awaiting availability check and itemized bill.</p></div><span className="status-pill">Awaiting bill</span></article>)}
           {!bills.length && !prescriptions.length && <div className="portal-empty">Doctor prescriptions and medicine-shop bills will appear here.</div>}
         </div>

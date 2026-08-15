@@ -11,7 +11,7 @@ import type {
   Doctor, Appointment, AppointmentStatus, DiagnosticOrder, Prescription,
   Medication, CaseStudy, PharmacyBill, PharmacyQueueItem, Medicine,
   PharmacyInventoryItem, PharmacyRestockResult, PharmacyCsvImportResult,
-  DoctorCreateInput, DoctorUpdateInput
+  DoctorCreateInput, DoctorUpdateInput, ProfileUpdateInput
 } from '../types';
 
 const api = axios.create({
@@ -50,6 +50,16 @@ export async function register(data: RegisterRequest): Promise<LoginResponse> {
 
 export async function getMe(): Promise<UserSummary> {
   return (await api.get<UserSummary>('/auth/me')).data;
+}
+
+export async function updateMe(data: ProfileUpdateInput): Promise<UserSummary> {
+  return (await api.patch<UserSummary>('/auth/me', data)).data;
+}
+
+export async function uploadProfileAvatar(file: File): Promise<UserSummary> {
+  const formData = new FormData();
+  formData.append('file', file);
+  return (await api.post<UserSummary>('/auth/me/avatar', formData, { headers: { 'Content-Type': 'multipart/form-data' } })).data;
 }
 
 export function logout() {

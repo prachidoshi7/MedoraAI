@@ -4,9 +4,11 @@ JWT-based login with bcrypt password hashing.
 """
 
 import logging
+import os
+import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
@@ -15,7 +17,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from config import settings
 from db.database import get_db
 from db import crud
-from models.schemas import LoginRequest, LoginResponse, RegisterRequest, UserSummary
+from models.schemas import LoginRequest, LoginResponse, ProfileUpdate, RegisterRequest, UserSummary
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +35,7 @@ def serialize_user(user) -> dict:
         "full_name": user.full_name or user.username,
         "email": user.email or "",
         "phone": user.phone or "",
+        "avatar_url": user.avatar_url or "",
         "specialization": user.specialization or "",
         "qualification": user.qualification or "",
         "department_id": user.department_id,
@@ -160,4 +163,35 @@ async def register(request: RegisterRequest, db: Session = Depends(get_db)):
 
 @router.get("/me", response_model=UserSummary)
 async def me(current_user=Depends(get_current_user)):
+    return UserSummary(**serialize_user(current_user))
+
+
+@router.patch("/me", response_model=UserSummary)
+async def update_me(request: ProfileUpdate, current_user=Depends(get_current_user), db: Session = Depends(get_db)):
+    current_user.full_name = request.full_name.strip()
+    current_user.email = request.email.strip()
+    current_user.phone = request.phone.strip()
+    db.commit()
+    db.refresh(current_user)
+    return UserSummary(**serialize_user(current_user))
+
+
+@router.post("/me/avatar", response_model=UserSummary)
+async def upload_avatar(file: UploadFile = File(...), current_user=Depends(get_current_user), db: Session = Depends(get_db)):
+    allowed_types = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
+    extension = allowed_types.get(file.content_type or "")
+    if not extension:
+        raise HTTPException(status_code=415, detail="Upload a JPG, PNG, or WebP image")
+    content = await file.read()
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Profile image must be 5 MB or smaller")
+    avatar_dir = os.path.join(settings.DATA_DIR, "avatars")
+    os.makedirs(avatar_dir, exist_ok=True)
+    filename = f"user-{current_user.id}-{uuid.uuid4().hex}{extension}"
+    path = os.path.join(avatar_dir, filename)
+    with open(path, "wb") as destination:
+        destination.write(content)
+    current_user.avatar_url = f"/static/avatars/{filename}"
+    db.commit()
+    db.refresh(current_user)
     return UserSummary(**serialize_user(current_user))
