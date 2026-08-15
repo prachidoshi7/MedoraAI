@@ -13,6 +13,7 @@ export interface UserSummary {
   full_name: string;
   email: string;
   phone: string;
+  avatar_url: string;
   specialization: string;
   qualification: string;
   department_id: number | null;
@@ -34,6 +35,7 @@ export interface RegisterRequest {
   email?: string;
   phone?: string;
 }
+export interface ProfileUpdateInput { full_name: string; email: string; phone: string; }
 
 /* ── Scan Types ── */
 export type ScanType = 'chest_xray' | 'brain_mri' | 'lung_ct' | 'kidney_us';

@@ -3,10 +3,12 @@
 :root {
   --paper: #f7f7f4;
   --panel: #ffffff;
-  --ink: #14181b;
-  --ink-soft: #5b6368;
-  --line: #e4e3dd;
-  --line-strong: #cfcec5;
+  --ink: #17212b;
+  --ink-soft: #465564;
+  --line: #dfe3e6;
+  --line-strong: #c7cfd5;
+  --navy: #243b53;
+  --slate-blue: #526d82;
   --heat-red: #e8542a;
   --heat-amber: #f2a93b;
   --teal: #0b7285;
@@ -22,7 +24,7 @@
 }
 
 html { min-width: 320px; background: var(--paper); scroll-behavior: smooth; }
-body { margin: 0; min-height: 100vh; background: var(--paper); color: var(--ink); font-family: var(--body); line-height: 1.5; -webkit-font-smoothing: antialiased; }
+body { margin: 0; min-height: 100vh; background: var(--paper); color: var(--ink); font-family: var(--body); font-weight: 400; line-height: 1.55; -webkit-font-smoothing: antialiased; }
 button, input, textarea, select { font: inherit; }
 button { border: 0; background: none; color: inherit; cursor: pointer; }
 button:disabled { cursor: not-allowed; opacity: .55; }
@@ -50,6 +52,7 @@ h1, h2, h3 { font-family: var(--display); font-weight: 600; letter-spacing: -.01
 
 /* Application shell */
 .app-shell { display: grid; min-height: 100vh; grid-template-columns: 264px minmax(0, 1fr); }
+.app-shell--collapsed { grid-template-columns: 82px minmax(0,1fr); }
 .site-sidebar { position: sticky; top: 0; display: flex; height: 100vh; min-height: 0; flex-direction: column; gap: 20px; overflow: hidden; padding: 22px 18px; border-right: 1px solid var(--line); background: var(--panel); }
 .brand-button { align-self: flex-start; padding: 0; border-radius: 10px; }
 .brand-button:focus-visible { outline: 2px solid var(--heat-red); outline-offset: 3px; }
@@ -68,12 +71,13 @@ h1, h2, h3 { font-family: var(--display); font-weight: 600; letter-spacing: -.01
 .doctor-identity > span:last-child { display: grid; }
 .doctor-identity small { color: var(--ink-soft); font-family: var(--mono); font-size: 8px; text-transform: uppercase; }
 .doctor-avatar { display: grid; width: 29px; height: 29px; place-items: center; border-radius: 8px; background: #eaf5f6; color: var(--teal-deep); font-family: var(--mono); font-size: 10px; }
+.doctor-avatar img { width: 100%; height: 100%; border-radius: inherit; object-fit: cover; }
 .nav-signout { width: max-content; color: var(--ink-soft); font-family: var(--mono); font-size: 9.5px; }
 .nav-signout:hover { color: var(--heat-red); }
 
 .page-content { min-width: 0; min-height: 100vh; }
 .page-content--auth { min-height: 100vh; }
-.workspace-context-bar { display: flex; min-height: 42px; align-items: center; justify-content: space-between; gap: 16px; padding: 9px clamp(26px,4vw,48px); border-bottom: 1px solid var(--line); background: rgba(255,255,255,.78); }
+.workspace-context-bar { display: flex; min-height: 58px; align-items: center; justify-content: space-between; gap: 16px; padding: 8px clamp(26px,4vw,48px); border-bottom: 1px solid var(--line); background: rgba(255,255,255,.92); }
 .workspace-context-bar span { font-family: var(--display); font-size: 15px; font-weight: 650; }
 .workspace-context-bar small { color: var(--ink-soft); font-size: 12px; }
 .workspace-page { width: min(1240px, 100%); min-height: 100vh; margin: 0 auto; padding: 34px clamp(26px, 4vw, 48px) 64px; animation: fade-in .45s var(--ease); }
@@ -154,32 +158,59 @@ h1, h2, h3 { font-family: var(--display); font-weight: 600; letter-spacing: -.01
 
 /* Hospital role shell */
 .hospital-sidebar { gap: 17px; }
+.sidebar-collapse-control { position: absolute; z-index: 5; top: 24px; right: -1px; display: grid; width: 27px; height: 34px; place-items: center; border: 1px solid var(--line); border-right: 0; border-radius: 9px 0 0 9px; background: var(--paper); color: var(--ink-soft); font-size: 22px; line-height: 1; transition: color .2s,background .2s; }
+.sidebar-collapse-control:hover { background: #eaf5f6; color: var(--teal-deep); }
+.sidebar-spacer { min-height: 12px; flex: 1; }
 .role-chip { display: flex; align-items: center; gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 11px; background: var(--paper); }
-.role-chip > span { display: grid; width: 30px; height: 30px; place-items: center; border-radius: 8px; background: #eaf5f6; color: var(--teal-deep); font-family: var(--mono); font-size: 10px; }
+.role-chip > span { display: grid; width: 30px; height: 30px; place-items: center; border-radius: 8px; background: #e8edf2; color: var(--navy); font-family: var(--mono); font-size: 11px; font-weight: 600; }
 .role-chip div { display: grid; min-width: 0; }
-.role-chip small { color: var(--ink-soft); font-family: var(--mono); font-size: 7px; letter-spacing: .08em; text-transform: uppercase; }
+.role-chip small { color: var(--slate-blue); font-family: var(--body); font-size: 10px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
 .role-chip strong { overflow: hidden; font-size: 11px; font-weight: 600; text-overflow: ellipsis; text-transform: capitalize; white-space: nowrap; }
 .role-navigation { display: grid; gap: 4px; }
-.role-navigation a { display: flex; align-items: center; gap: 10px; padding: 10px 11px; border-radius: 9px; color: var(--ink-soft); font-size: 11.5px; font-weight: 500; text-decoration: none; transition: background .2s,color .2s,transform .2s; }
+.role-navigation a { display: flex; align-items: center; gap: 10px; padding: 11px; border-radius: 9px; color: #34495a; font-size: 14px; font-weight: 600; text-decoration: none; transition: background .2s,color .2s,transform .2s; }
 .role-navigation a:hover { color: var(--ink); transform: translateX(2px); }
-.role-navigation a.active { background: var(--ink); color: #fff; }
+.role-navigation a.active { background: var(--navy); color: #fff; }
 .role-navigation a span { width: 17px; font-family: var(--mono); text-align: center; }
-.journey-map { min-height: 0; flex: 1; padding: 15px 6px; overflow: hidden; border-top: 1px solid var(--line); }
-.journey-map .eyebrow { margin-bottom: 11px; color: var(--ink-soft); font-size: 7.5px; }
-.journey-map > div { display: grid; min-height: 34px; grid-template-columns: 21px 10px 1fr; align-items: center; gap: 6px; color: #8a9295; }
-.journey-map span { font-family: var(--mono); font-size: 7px; }
-.journey-map i { position: relative; width: 6px; height: 6px; border: 1px solid #aab0b2; border-radius: 50%; }
-.journey-map i::after { content: ''; position: absolute; top: 6px; left: 2px; width: 1px; height: 28px; background: var(--line); }
-.journey-map > div:last-child i::after { display: none; }
-.journey-map strong { font-size: 9px; font-weight: 500; }
+.role-navigation a b { min-width: 0; overflow: hidden; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .role-navigation a { font-size: 13px; }
 .role-chip strong { font-size: 12.5px; }
-.journey-map strong { font-size: 10.5px; }
 .doctor-identity { font-size: 13px; }
 .nav-signout { font-size: 11px; }
+.profile-photo-control { display: flex; align-items: center; gap: 10px; padding: 10px; border: 1px dashed var(--line-strong); border-radius: 10px; text-align: left; }
+.profile-photo-control > span:last-child { display: grid; font-size: 12px; font-weight: 600; }
+.profile-photo-control small { color: var(--ink-soft); font-size: 9px; font-weight: 400; }
+.account-menu { position: relative; }
+.account-trigger { display: flex; min-width: 190px; align-items: center; gap: 9px; padding: 5px 8px; border-radius: 10px; text-align: left; }
+.account-trigger:hover { background: var(--paper); }
+.account-trigger > span:nth-child(2) { display: grid; min-width: 0; }
+.account-trigger small { color: var(--slate-blue); font-family: var(--body); font-size: 10px; font-weight: 600; text-transform: uppercase; }
+.account-trigger strong { overflow: hidden; font-size: 14px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.account-trigger b { margin-left: auto; color: var(--ink-soft); font-size: 11px; }
+.account-panel { position: absolute; z-index: 30; top: calc(100% + 9px); right: 0; display: grid; width: min(350px,calc(100vw - 36px)); gap: 12px; padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); box-shadow: 0 24px 60px -26px rgba(20,24,27,.55); }
+.account-panel > header { display: flex; align-items: center; justify-content: space-between; }
+.account-panel > header div { display: grid; }
+.account-panel > header small,.account-panel label > span { color: var(--ink-soft); font-family: var(--mono); font-size: 9px; text-transform: uppercase; }
+.account-panel > header strong { font-family: var(--display); font-size: 18px; }
+.account-panel > header button { color: var(--ink-soft); font-size: 22px; line-height: 1; }
+.account-panel label { display: grid; gap: 5px; }
+.account-panel input { width: 100%; min-height: 42px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); }
+.account-panel__error { color: #a43326; font-size: 11px; }
+.hospital-sidebar,.app-shell { transition: grid-template-columns .28s var(--ease),padding .28s var(--ease); }
+.hospital-sidebar.is-collapsed { align-items: center; padding-right: 12px; padding-left: 12px; }
+.hospital-sidebar.is-collapsed .brand-button { align-self: center; margin-top: 3px; }
+.hospital-sidebar.is-collapsed .medora-logo--sidebar { width: 48px; }
+.hospital-sidebar.is-collapsed .role-chip { justify-content: center; width: 48px; padding: 8px; }
+.hospital-sidebar.is-collapsed .role-chip div { display: none; }
+.hospital-sidebar.is-collapsed .role-navigation { width: 100%; }
+.hospital-sidebar.is-collapsed .role-navigation a { justify-content: center; width: 48px; min-height: 44px; margin: 0 auto; padding: 10px; }
+.hospital-sidebar.is-collapsed .role-navigation a span { width: auto; font-size: 13px; }
+.hospital-sidebar.is-collapsed .role-navigation a b,.hospital-sidebar.is-collapsed .engine-status { display: none; }
+.hospital-sidebar.is-collapsed .sidebar-footer { width: 100%; justify-items: center; padding-right: 0; padding-left: 0; }
+.hospital-sidebar.is-collapsed .nav-signout { width: 48px; overflow: hidden; font-size: 0; }
+.hospital-sidebar.is-collapsed .nav-signout::before { content: '↪'; font-size: 16px; }
 
 /* Role portals */
-.portal-page { width: min(1400px, 100%); background-image: radial-gradient(circle at 95% 0,rgba(11,114,133,.05),transparent 27%); }
+.portal-page { width: min(1400px, 100%); background-image: radial-gradient(circle at 95% 0,rgba(36,59,83,.045),transparent 27%); }
 .narrow-page { width: min(1080px, 100%); }
 .portal-hero { display: flex; align-items: flex-start; justify-content: space-between; gap: 28px; margin-bottom: 28px; padding: 12px 0 25px; border-bottom: 1px solid var(--line); }
 .portal-hero h1 { font-size: clamp(29px,4vw,48px); line-height: 1.05; }
@@ -197,17 +228,17 @@ h1, h2, h3 { font-family: var(--display); font-weight: 600; letter-spacing: -.01
 .portal-card.is-disabled { opacity: .48; pointer-events: none; }
 .portal-card > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 15px; }
 .portal-card > header h2 { font-size: 17px; }
-.portal-card > header .eyebrow { margin-bottom: 2px; font-size: 8px; }
+.portal-card > header .eyebrow { margin-bottom: 3px; color: var(--slate-blue); font-family: var(--body); font-size: 11px; font-weight: 700; letter-spacing: .07em; }
 .portal-card > header > a { color: var(--teal-deep); font-family: var(--mono); font-size: 9px; text-decoration: none; }
 .record-list { display: grid; }
 .record-row { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 11px; min-height: 75px; padding: 12px 2px; border-top: 1px solid var(--line); }
 .record-row--link { color: inherit; text-decoration: none; transition: padding .2s,background .2s; }
 .record-row--link:hover { padding-right: 8px; padding-left: 8px; background: #fafaf7; }
 .record-row > div { display: grid; min-width: 0; }
-.record-row strong { overflow: hidden; font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.record-row small { color: var(--ink-soft); font-family: var(--mono); font-size: 8px; text-transform: capitalize; }
-.record-row p { overflow: hidden; margin-top: 4px; color: var(--ink-soft); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.record-icon { display: grid; width: 31px; height: 31px; place-items: center; border-radius: 8px; background: #eaf5f6; color: var(--teal-deep); font-family: var(--mono); font-size: 8px; }
+.record-row strong { overflow: hidden; color: var(--ink); font-size: 14px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.record-row small { color: var(--ink-soft); font-family: var(--body); font-size: 12px; font-weight: 500; line-height: 1.5; text-transform: none; }
+.record-row p { overflow: hidden; margin-top: 5px; color: #354554; font-size: 13px; line-height: 1.55; text-overflow: ellipsis; white-space: nowrap; }
+.record-icon { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 9px; background: #e8edf2; color: var(--navy); font-family: var(--mono); font-size: 10px; font-weight: 600; }
 .status-dot { width: 7px; height: 7px; border-radius: 50%; background: #9ca3a6; }
 .status-requested { background: var(--heat-amber); }
 .status-confirmed,.status-in_progress,.status-preliminary { background: var(--teal); }
@@ -250,38 +281,104 @@ h1, h2, h3 { font-family: var(--display); font-weight: 600; letter-spacing: -.01
 .flow-actions--between { justify-content: space-between; }
 
 /* Readability pass for role dashboards */
-.portal-page .eyebrow { font-size: 11.5px; }
+.portal-page .eyebrow { color: var(--slate-blue); font-family: var(--body); font-size: 12px; font-weight: 700; letter-spacing: .07em; }
 .portal-hero > div:first-child > p:last-child { font-size: 15px; line-height: 1.65; }
 .portal-card > header h2 { font-size: 20px; }
-.portal-card > header .eyebrow { font-size: 10.5px; }
-.portal-card > header > a { font-size: 12px; }
-.metric-grid span { font-size: 10px; }
-.metric-grid small { font-size: 12px; }
+.portal-card > header .eyebrow { font-size: 11.5px; }
+.portal-card > header > a { color: var(--navy); font-family: var(--body); font-size: 13px; font-weight: 700; }
+.metric-grid span { color: var(--slate-blue); font-family: var(--body); font-size: 11px; font-weight: 700; }
+.metric-grid small { color: var(--ink-soft); font-size: 13px; font-weight: 500; }
 .record-row strong { font-size: 14px; }
-.record-row small { font-size: 10.5px; }
-.record-row p { font-size: 12px; }
-.patient-report-record { grid-template-columns: auto minmax(0,1fr) auto; }
-.patient-report-actions { display: flex !important; grid-auto-flow: column; align-items: center; gap: 7px; }
-.patient-report-actions .button { min-height: 36px; padding: 7px 12px; white-space: nowrap; text-decoration: none; }
-.status-pill { font-size: 9.5px; }
+.record-row small { font-size: 12px; }
+.record-row p { font-size: 13px; }
+.patient-report-record { grid-template-columns: auto minmax(0,1fr); }
+.patient-report-actions { display: grid !important; grid-column: 1 / -1; grid-template-columns: 1fr 1fr; gap: 9px; padding-top: 12px; border-top: 1px solid var(--line); }
+.patient-report-actions .button { width: 100%; min-height: 42px; padding: 9px 12px; white-space: nowrap; text-decoration: none; }
+.appointment-record { align-items: start; padding: 15px 2px; }
+.appointment-record .status-dot { margin-top: 8px; }
+.appointment-credentials { margin-top: 4px; color: #2f4150 !important; font-family: var(--body) !important; font-size: 13.5px !important; font-weight: 700; line-height: 1.5; text-transform: none !important; }
+.appointment-date { margin-top: 5px; color: var(--ink-soft) !important; font-family: var(--body) !important; font-size: 13px !important; font-weight: 600; text-transform: none !important; }
+.appointment-status { border: 1px solid var(--line-strong); color: #364044; font-family: var(--body); font-size: 11px; font-weight: 750; }
+.appointment-status--requested { border-color: #e0a530; background: #fff4d8; color: #795500; }
+.appointment-status--confirmed,.appointment-status--in_progress { border-color: #8fc2c7; background: #eaf5f6; color: var(--teal-deep); }
+.appointment-status--completed { border-color: #afd6ba; background: #e8f6ec; color: #246638; }
+.appointment-status--cancelled { border-color: #efb8b8; background: #fceaea; color: #962929; }
+.record-note { display: grid; gap: 3px; overflow: visible !important; margin-top: 10px !important; padding: 10px 12px; border-left: 3px solid var(--slate-blue); background: #f3f5f7; color: #2e3e4c !important; font-size: 13px !important; line-height: 1.6; overflow-wrap: anywhere; text-overflow: clip !important; white-space: pre-wrap !important; }
+.record-note span { color: var(--slate-blue); font-family: var(--body); font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.patient-report-record { align-items: start; margin-top: 8px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: #fdfdfb; }
+.patient-report-record .record-icon { margin-top: 1px; }
+.patient-report-record strong { white-space: normal; }
+.approval-line { display: inline-flex; width: max-content; align-items: center; gap: 6px; margin-top: 7px; color: var(--navy); font-size: 12px; font-weight: 700; }
+.approval-line i { display: grid; width: 18px; height: 18px; place-items: center; border-radius: 50%; background: #e8edf2; color: var(--navy); font-style: normal; font-size: 10px; }
+.patient-report-record small { margin-top: 2px; text-transform: none; }
+.patient-report-record > div:nth-child(2) { gap: 2px; }
+.patient-report-record .record-note { margin-bottom: 4px; }
+.patient-medicine-card--full { width: 100%; }
+.medicine-bill-record { min-height: 96px; padding: 15px 4px; }
+.medicine-bill-record strong { font-size: 15px; }
+.medicine-bill-record small { margin-top: 3px; color: #444d51; font-family: var(--body); font-size: 12px; text-transform: none; }
+.medicine-bill-record p { overflow: visible; margin-top: 7px; color: var(--ink); font-size: 13px; font-weight: 550; text-overflow: clip; white-space: normal; }
+.status-pill { color: #34495a; font-family: var(--body); font-size: 10.5px; font-weight: 700; }
 .portal-empty { font-size: 13px; }
 .success-banner,.portal-page .form-error { font-size: 13px; }
-.field > span { font-size: 10px; }
+.field > span { color: var(--slate-blue); font-family: var(--body); font-size: 11px; font-weight: 700; }
 .field input,.field textarea,.field select,.clinical-editor { min-height: 44px; font-size: 13.5px; }
 .button { font-size: 12.5px; }
 .text-button { font-size: 12px; }
 .doctor-card { min-height: 92px; }
 .doctor-card strong { font-size: 14px; }
-.doctor-card small { font-size: 11.5px; }
+.doctor-card small { color: var(--ink-soft); font-family: var(--body); font-size: 12.5px; line-height: 1.45; }
 .doctor-card em { margin-top: 4px; color: #a43326; font-size: 11px; font-style: normal; font-weight: 600; }
 .doctor-card.is-unavailable { border-style: dashed; background: #f5f5f2; opacity: .78; }
 .doctor-card.is-unavailable .profile-avatar { filter: grayscale(1); }
 .booking-summary span { font-size: 9px; }
 .booking-summary strong { font-size: 14px; }
 .booking-summary small { font-size: 11px; }
-.doctor-credential-line { color: var(--teal-deep) !important; font-weight: 650; }
+.doctor-credential-line { color: var(--navy) !important; font-weight: 700; }
 .hero-action-stack { display: grid; justify-items: end; gap: 10px; }
 .medicine-select-field { min-width: 0; }
+
+/* Patient dashboard — high-clarity reading system */
+.patient-dashboard-page { color: #17212b; }
+.patient-dashboard-page .portal-hero { margin-bottom: 30px; padding-bottom: 28px; }
+.patient-dashboard-page .portal-hero .eyebrow { margin-bottom: 8px; color: #465564; font-family: var(--body); font-size: 13px; font-weight: 700; letter-spacing: .08em; }
+.patient-dashboard-page .portal-hero h1 { color: #17212b; font-size: clamp(34px,4vw,50px); font-weight: 700; }
+.patient-dashboard-page .portal-hero > div:first-child > p:last-child { max-width: 720px; color: #3d4c58; font-size: 17px; font-weight: 500; line-height: 1.65; }
+.patient-dashboard-page .portal-hero .button { min-height: 48px; padding: 12px 21px; font-family: var(--body); font-size: 15px; font-weight: 700; }
+.patient-dashboard-page .metric-grid { gap: 14px; margin-bottom: 24px; }
+.patient-dashboard-page .metric-grid article { min-height: 148px; padding: 21px; }
+.patient-dashboard-page .metric-grid span { color: #465564; font-family: var(--body); font-size: 13px; font-weight: 700; letter-spacing: .045em; }
+.patient-dashboard-page .metric-grid strong { margin: 12px 0 8px; color: #17212b; font-size: 40px; font-weight: 700; }
+.patient-dashboard-page .metric-grid small { color: #3f4e5a; font-family: var(--body); font-size: 14px; font-weight: 600; line-height: 1.45; }
+.patient-dashboard-page .portal-card { padding: 24px; border-color: #d6dce0; box-shadow: 0 18px 38px -34px rgba(23,33,43,.62); }
+.patient-dashboard-page .portal-card > header { margin-bottom: 17px; }
+.patient-dashboard-page .portal-card > header .eyebrow { margin-bottom: 4px; color: #52616d; font-family: var(--body); font-size: 12px; font-weight: 700; letter-spacing: .07em; }
+.patient-dashboard-page .portal-card > header h2 { color: #17212b; font-size: 24px; font-weight: 700; }
+.patient-dashboard-page .portal-card > header > a { color: #0a5a68; font-family: var(--body); font-size: 14px; font-weight: 700; }
+.patient-dashboard-page .record-list { gap: 12px; }
+.patient-dashboard-page .record-row { min-height: 0; padding: 17px; border: 1px solid #dfe3e6; border-radius: 11px; background: #fff; }
+.patient-dashboard-page .record-row > div { gap: 3px; }
+.patient-dashboard-page .record-row strong { overflow: visible; color: #17212b; font-size: 16px; font-weight: 700; line-height: 1.45; text-overflow: clip; white-space: normal; }
+.patient-dashboard-page .record-row small { color: #465564; font-family: var(--body); font-size: 14px; font-weight: 600; line-height: 1.55; text-transform: none; }
+.patient-dashboard-page .record-row p { color: #33424e; font-size: 14px; line-height: 1.6; }
+.patient-dashboard-page .appointment-record { grid-template-columns: 10px minmax(0,1fr) auto; align-items: start; padding: 18px; }
+.patient-dashboard-page .appointment-credentials { color: #263b4a !important; font-size: 14px !important; font-weight: 700; }
+.patient-dashboard-page .appointment-date { color: #465564 !important; font-size: 14px !important; font-weight: 600; }
+.patient-dashboard-page .record-note { margin-top: 11px !important; padding: 11px 13px; border-left: 3px solid #526d82; background: #f3f5f7; color: #24333f !important; font-size: 14px !important; font-weight: 600; }
+.patient-dashboard-page .record-note span { color: #465564; font-family: var(--body); font-size: 11px; font-weight: 700; }
+.patient-dashboard-page .appointment-status { margin-top: 1px; padding: 6px 10px; font-size: 12px; font-weight: 700; }
+.patient-dashboard-page .patient-report-record { grid-template-columns: 40px minmax(0,1fr); padding: 19px; border-color: #cfd6db; background: #fff; }
+.patient-dashboard-page .record-icon { width: 40px; height: 40px; background: #e8edf2; color: #243b53; font-size: 11px; font-weight: 700; }
+.patient-dashboard-page .approval-line { margin-top: 8px; color: #243b53; font-size: 13px; font-weight: 700; }
+.patient-dashboard-page .approval-line i { background: #e8edf2; color: #243b53; }
+.patient-dashboard-page .patient-report-actions { gap: 11px; margin-top: 5px; padding-top: 15px; }
+.patient-dashboard-page .patient-report-actions .button { min-height: 46px; font-family: var(--body); font-size: 14px; font-weight: 700; }
+.patient-dashboard-page .medicine-bill-record { min-height: 108px; }
+.patient-dashboard-page .medicine-bill-record strong { font-size: 17px; }
+.patient-dashboard-page .medicine-bill-record small { color: #465564; font-size: 14px; font-weight: 600; }
+.patient-dashboard-page .medicine-bill-record p { color: #24333f; font-size: 15px; font-weight: 600; }
+.patient-dashboard-page .medicine-bill-record > span:last-child,.patient-dashboard-page .record-row--link > span:last-child { color: #0a5a68; font-size: 14px; font-weight: 700; white-space: nowrap; }
+.patient-dashboard-page .portal-empty { color: #465564; font-size: 15px; font-weight: 500; }
 
 /* Doctor administration */
 .doctor-create-card { margin-bottom: 16px; }
@@ -775,11 +872,122 @@ h1, h2, h3 { font-family: var(--display); font-weight: 600; letter-spacing: -.01
 .empty-state-card > span { display: grid; width: 48px; height: 48px; margin: 0 auto 18px; place-items: center; border-radius: 13px; background: #fdf3ec; color: var(--heat-red); font-family: var(--mono); }
 .empty-state-card h1 { font-size: 28px; }
 .empty-state-card > p:not(.eyebrow) { margin: 10px 0 22px; color: var(--ink-soft); font-size: 12px; }
+
+/* MedoraAI public landing */
+.landing-page { --landing-ink:#14181b; --landing-muted:#59656b; --landing-line:#deded8; min-height:100vh; overflow:hidden; background:#f7f7f4; color:var(--landing-ink); }
+.landing-wrap { width:min(1180px,calc(100% - 64px)); margin:0 auto; }
+.landing-nav { position:fixed; z-index:100; top:0; right:0; left:0; border-bottom:1px solid rgba(222,222,216,.86); background:rgba(247,247,244,.9); backdrop-filter:blur(16px); }
+.landing-nav__inner { display:flex; min-height:76px; align-items:center; justify-content:space-between; gap:28px; }
+.landing-logo { width:126px; }
+.landing-nav nav { display:flex; align-items:center; gap:30px; }
+.landing-nav nav a { color:var(--landing-muted); font-size:14px; font-weight:600; text-decoration:none; }
+.landing-nav nav a:hover { color:var(--landing-ink); }
+.landing-nav__cta { padding:10px 18px; border:1px solid var(--landing-ink); border-radius:100px; color:var(--landing-ink); font-family:var(--mono); font-size:12px; font-weight:600; text-decoration:none; transition:background .2s,color .2s; }
+.landing-nav__cta:hover { background:var(--landing-ink); color:#fff; }
+.landing-hero { position:relative; display:grid; min-height:760px; grid-template-columns:minmax(0,1.08fr) minmax(360px,.92fr); align-items:center; gap:70px; padding-top:132px; padding-bottom:68px; }
+.landing-grid { position:absolute; z-index:0; inset:76px -30vw 0; opacity:.62; background-image:linear-gradient(var(--landing-line) 1px,transparent 1px),linear-gradient(90deg,var(--landing-line) 1px,transparent 1px); background-size:46px 46px; mask-image:radial-gradient(ellipse 65% 68% at 35% 38%,#000 10%,transparent 76%); pointer-events:none; }
+.landing-hero__copy,.landing-scan-card { position:relative; z-index:1; }
+.landing-eyebrow { display:flex; align-items:center; gap:9px; color:#0a5a68; font-family:var(--mono); font-size:12px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; }
+.landing-eyebrow i { width:7px; height:7px; border-radius:50%; background:var(--heat-red); box-shadow:0 0 0 4px rgba(232,84,42,.13); }
+.landing-hero h1 { max-width:690px; margin:19px 0 23px; font-size:clamp(46px,5.8vw,72px); font-weight:600; line-height:.99; letter-spacing:-.045em; }
+.landing-hero h1 em { background:linear-gradient(100deg,var(--heat-red),var(--heat-amber)); background-clip:text; color:transparent; font-style:normal; }
+.landing-lead { max-width:610px; color:var(--landing-muted); font-size:17px; line-height:1.72; }
+.landing-actions { display:flex; flex-wrap:wrap; align-items:center; gap:13px; margin-top:31px; }
+.landing-button { display:inline-flex; min-height:47px; align-items:center; justify-content:center; gap:12px; padding:12px 22px; border-radius:100px; font-family:var(--mono); font-size:12.5px; font-weight:600; text-decoration:none; transition:transform .25s var(--ease),box-shadow .25s,background .25s; }
+.landing-button:hover { transform:translateY(-2px); }
+.landing-button--primary { background:var(--landing-ink); color:#fff; box-shadow:0 15px 28px -20px rgba(20,24,27,.7); }
+.landing-button--quiet { border-bottom:1px solid #aeb5b8; border-radius:0; color:#3f494e; }
+.landing-trust { display:flex; flex-wrap:wrap; gap:25px; margin-top:42px; padding-top:21px; border-top:1px solid var(--landing-line); }
+.landing-trust span { display:grid; color:var(--landing-muted); font-size:12px; }
+.landing-trust b { color:var(--landing-ink); font-family:var(--display); font-size:24px; }
+.landing-scan-card { padding:21px; border:1px solid var(--landing-line); border-radius:19px; background:#fff; box-shadow:0 34px 65px -38px rgba(20,24,27,.42); }
+.landing-scan-card > header,.landing-scan-card > footer { display:flex; align-items:center; justify-content:space-between; gap:15px; color:var(--landing-muted); font-family:var(--mono); font-size:10px; }
+.landing-scan-card > header { margin-bottom:14px; }
+.landing-scan-card > header span { display:flex; align-items:center; gap:7px; }
+.landing-scan-card > header i { width:7px; height:7px; border-radius:50%; background:var(--sev-normal); box-shadow:0 0 0 3px rgba(47,158,68,.14); }
+.landing-scan-card > header b { color:#3d474c; font-weight:600; }
+.landing-scan { position:relative; overflow:hidden; border-radius:11px; background:#11171a; }
+.landing-scan svg { width:100%; aspect-ratio:1/1.05; }
+.landing-scan__line { position:absolute; right:0; left:0; height:2px; background:linear-gradient(90deg,transparent,var(--heat-amber),var(--heat-red),transparent); box-shadow:0 0 17px 4px rgba(242,169,59,.46); animation:landing-sweep 4.8s ease-in-out infinite; }
+.landing-finding { position:absolute; top:50%; left:60%; width:25%; height:23%; border:1.5px solid var(--heat-amber); border-radius:4px; animation:landing-find 4.8s ease-in-out infinite; }
+.landing-finding span { position:absolute; top:-22px; left:0; padding:2px 6px; border-radius:3px; background:rgba(15,18,20,.88); color:var(--heat-amber); font-family:var(--mono); font-size:8px; white-space:nowrap; }
+.landing-scan-card > footer { margin-top:14px; }
+.landing-scan-card > footer b { color:var(--heat-red); font-weight:600; }
+@keyframes landing-sweep { 0%{top:7%;opacity:0} 10%,50%{opacity:1} 55%,100%{top:92%;opacity:0} }
+@keyframes landing-find { 0%,50%,100%{opacity:0} 63%,88%{opacity:1} }
+.landing-ticker { overflow:hidden; padding:15px 0; border-top:1px solid var(--landing-line); border-bottom:1px solid var(--landing-line); background:#fff; white-space:nowrap; }
+.landing-ticker > div { display:inline-flex; animation:landing-ticker 34s linear infinite; }
+.landing-ticker span { padding:0 28px; border-right:1px solid var(--landing-line); color:var(--landing-muted); font-family:var(--mono); font-size:11px; }
+@keyframes landing-ticker { to { transform:translateX(-50%); } }
+.landing-section { padding-top:110px; padding-bottom:110px; }
+.landing-section__head { max-width:700px; margin-bottom:54px; }
+.landing-section__head h2 { margin-top:15px; font-size:clamp(32px,4vw,48px); line-height:1.08; letter-spacing:-.035em; }
+.landing-section__head > p:last-child { margin-top:15px; color:var(--landing-muted); font-size:16px; line-height:1.7; }
+.landing-workflow { position:relative; display:grid; grid-template-columns:repeat(5,1fr); gap:22px; }
+.landing-workflow::before { content:''; position:absolute; top:20px; right:5%; left:5%; height:1px; background:#c7c9c5; }
+.landing-workflow article { position:relative; z-index:1; }
+.landing-workflow article > span { display:grid; width:40px; height:40px; margin-bottom:20px; place-items:center; border:1px solid var(--landing-ink); border-radius:50%; background:#f7f7f4; font-family:var(--mono); font-size:11px; }
+.landing-workflow h3 { margin-bottom:9px; font-size:17px; }
+.landing-workflow p { color:var(--landing-muted); font-size:13.5px; line-height:1.58; }
+.landing-section--ink { width:100%; background:#172025; color:#fff; }
+.landing-section--ink h2,.landing-section--ink h3 { color:#fff; }
+.landing-section--ink .landing-section__head > p:last-child { color:#aeb7bb; }
+.landing-eyebrow--dark { color:#8fd0d8; }
+.landing-capabilities { display:grid; grid-template-columns:repeat(3,1fr); gap:1px; overflow:hidden; border:1px solid #374147; border-radius:17px; background:#374147; }
+.landing-capabilities article { min-height:245px; padding:29px; background:#1d282e; transition:background .25s; }
+.landing-capabilities article:hover { background:#243138; }
+.landing-capabilities article > span { display:grid; width:43px; height:43px; margin-bottom:23px; place-items:center; border:1px solid #435159; border-radius:10px; background:#202e35; color:#8fd0d8; font-family:var(--mono); font-size:11px; }
+.landing-capabilities h3 { margin-bottom:10px; font-size:18px; }
+.landing-capabilities p { color:#aeb7bb; font-size:14px; line-height:1.65; }
+.landing-safety { display:grid; grid-template-columns:minmax(0,.92fr) minmax(420px,1.08fr); gap:80px; align-items:center; }
+.landing-safety h2 { margin:15px 0; font-size:clamp(34px,4vw,50px); line-height:1.05; }
+.landing-safety > div:first-child > p:not(.landing-eyebrow) { color:var(--landing-muted); font-size:16px; line-height:1.72; }
+.landing-safety__rules { border-top:1px solid var(--landing-line); }
+.landing-safety__rules article { display:grid; grid-template-columns:45px 1fr; gap:14px; padding:21px 4px; border-bottom:1px solid var(--landing-line); }
+.landing-safety__rules article > b { color:#9ba2a6; font-family:var(--mono); font-size:10px; }
+.landing-safety__rules article > span { display:grid; color:var(--landing-muted); font-size:13.5px; line-height:1.55; }
+.landing-safety__rules strong { margin-bottom:4px; color:var(--landing-ink); font-size:15px; }
+.landing-cta { position:relative; display:flex; min-height:380px; align-items:center; overflow:hidden; margin-bottom:90px; padding:64px; border-radius:22px; background:#172025; color:#fff; }
+.landing-cta > div { position:relative; z-index:1; max-width:720px; }
+.landing-cta h2 { margin:14px 0; color:#fff; font-size:clamp(35px,4.5vw,54px); line-height:1.04; }
+.landing-cta p:not(.landing-eyebrow) { color:#b6c0c4; font-size:16px; }
+.landing-button--light { background:#fff; color:#172025; }
+.landing-button--outline-light { border:1px solid #69767c; color:#fff; }
+.landing-cta__mark { position:absolute; right:-20px; bottom:-130px; color:rgba(255,255,255,.035); font-family:var(--display); font-size:420px; font-weight:700; line-height:1; }
+.landing-footer { padding:32px 0; border-top:1px solid var(--landing-line); background:#fff; }
+.landing-footer > div { display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:25px; }
+.landing-footer p,.landing-footer span { color:var(--landing-muted); font-size:12px; }
+.landing-footer span { font-family:var(--mono); font-size:9px; text-transform:uppercase; }
+
+@media(max-width:960px) {
+  .landing-hero { min-height:auto; grid-template-columns:1fr; padding-top:145px; }
+  .landing-hero__copy { max-width:760px; }
+  .landing-scan-card { width:min(580px,100%); }
+  .landing-workflow { grid-template-columns:repeat(2,1fr); gap:32px; }
+  .landing-workflow::before { display:none; }
+  .landing-capabilities { grid-template-columns:repeat(2,1fr); }
+  .landing-safety { grid-template-columns:1fr; gap:45px; }
+}
+@media(max-width:700px) {
+  .landing-wrap { width:min(100% - 36px,1180px); }
+  .landing-nav nav { display:none; }
+  .landing-nav__inner { min-height:68px; }
+  .landing-logo { width:108px; }
+  .landing-hero { gap:45px; padding-top:120px; }
+  .landing-hero h1 { font-size:clamp(40px,13vw,58px); }
+  .landing-trust { gap:17px; }
+  .landing-section { padding-top:75px; padding-bottom:75px; }
+  .landing-workflow,.landing-capabilities { grid-template-columns:1fr; }
+  .landing-capabilities article { min-height:0; }
+  .landing-cta { min-height:420px; margin-bottom:50px; padding:35px 27px; }
+  .landing-footer > div { grid-template-columns:1fr; }
+}
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes shimmer { to { background-position: -200% 0; } }
 
 @media (max-width: 1040px) {
   .app-shell { grid-template-columns: 230px minmax(0,1fr); }
+  .app-shell--collapsed { grid-template-columns: 82px minmax(0,1fr); }
   .site-sidebar { padding: 20px 14px; }
   .result-grid { grid-template-columns: 1fr; }
   .scan-canvas, .scan-canvas img { height: 540px; }
@@ -801,8 +1009,15 @@ h1, h2, h3 { font-family: var(--display); font-weight: 600; letter-spacing: -.01
   .site-sidebar { position: relative; z-index: 20; display: grid; width: 100%; height: auto; grid-template-columns: 1fr auto; align-items: center; padding: 14px 18px; border-right: 0; border-bottom: 1px solid var(--line); overflow: visible; }
   .new-study-button { width: auto; padding: 9px 13px; }
   .sidebar-history, .sidebar-footer { display: none; }
-  .hospital-sidebar { grid-template-columns: auto 1fr; }
+  .hospital-sidebar { grid-template-columns: auto 1fr; align-items: center; padding: 14px 18px; }
+  .hospital-sidebar.is-collapsed { display: grid; grid-template-columns: auto 1fr; align-items: center; padding: 14px 18px; }
   .medora-logo--sidebar { width: 96px; }
+  .hospital-sidebar.is-collapsed .medora-logo--sidebar { width: 96px; }
+  .hospital-sidebar.is-collapsed .brand-button { margin-top: 0; }
+  .hospital-sidebar.is-collapsed .role-navigation { width: auto; }
+  .hospital-sidebar.is-collapsed .role-navigation a { justify-content: flex-start; width: auto; min-height: 0; margin: 0; padding: 8px; }
+  .hospital-sidebar.is-collapsed .role-navigation a b { display: inline; font-size: 9px; }
+  .sidebar-collapse-control { display: none; }
   .hospital-sidebar .role-chip,.hospital-sidebar .journey-map { display: none; }
   .role-navigation { display: flex; justify-content: flex-end; }
   .role-navigation a { padding: 8px; font-size: 9px; }
@@ -873,6 +1088,11 @@ h1, h2, h3 { font-family: var(--display); font-weight: 600; letter-spacing: -.01
   .login-footer { right: 18px; }
   .results-skeleton-grid { grid-template-columns: 1fr; }
   .portal-hero,.consultation-hero { align-items: stretch; flex-direction: column; }
+  .patient-dashboard-page .portal-card { padding: 19px; }
+  .patient-dashboard-page .record-row { padding: 15px; }
+  .patient-dashboard-page .appointment-record { grid-template-columns: 9px minmax(0,1fr); }
+  .patient-dashboard-page .appointment-status { grid-column: 2; margin-top: 8px; }
+  .patient-dashboard-page .patient-report-actions { grid-template-columns: 1fr; }
   .patient-final-summary > header,.patient-full-record > footer { align-items: stretch; flex-direction: column; }
   .patient-report-record { grid-template-columns: auto minmax(0,1fr); }
   .patient-report-actions { grid-column: 1 / -1; grid-auto-flow: row; grid-template-columns: 1fr 1fr; }

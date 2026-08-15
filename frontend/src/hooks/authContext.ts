@@ -9,6 +9,8 @@ export interface AuthContextType {
   login: (data: LoginRequest) => Promise<void>;
   register: (data: RegisterRequest) => Promise<void>;
   logout: () => void;
+  refreshUser: () => Promise<UserSummary>;
+  setCurrentUser: (user: UserSummary) => void;
   loading: boolean;
   error: string | null;
 }

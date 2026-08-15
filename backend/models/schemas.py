@@ -31,6 +31,7 @@ class UserSummary(BaseModel):
     full_name: str = ""
     email: str = ""
     phone: str = ""
+    avatar_url: str = ""
     specialization: str = ""
     qualification: str = ""
     department_id: Optional[int] = None
@@ -43,6 +44,12 @@ class UserSummary(BaseModel):
 class RegisterRequest(BaseModel):
     username: str = Field(..., min_length=3, max_length=50, pattern=r"^[a-zA-Z0-9._-]+$")
     password: str = Field(..., min_length=6, max_length=128)
+    full_name: str = Field(..., min_length=2, max_length=150)
+    email: str = Field(default="", max_length=150)
+    phone: str = Field(default="", max_length=20)
+
+
+class ProfileUpdate(BaseModel):
     full_name: str = Field(..., min_length=2, max_length=150)
     email: str = Field(default="", max_length=150)
     phone: str = Field(default="", max_length=20)

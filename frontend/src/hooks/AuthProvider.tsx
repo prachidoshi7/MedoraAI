@@ -86,6 +86,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem('medoraai_user');
   }, []);
 
+  const setCurrentUser = useCallback((identity: UserSummary) => {
+    setUser(identity);
+    setUsername(identity.username);
+    localStorage.setItem('medoraai_user', JSON.stringify(identity));
+    localStorage.setItem('medoraai_username', identity.username);
+  }, []);
+
+  const refreshUser = useCallback(async () => {
+    const identity = await getMe();
+    setCurrentUser(identity);
+    return identity;
+  }, [setCurrentUser]);
+
   return (
     <AuthContext.Provider
       value={{
@@ -96,6 +109,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         login,
         register,
         logout,
+        refreshUser,
+        setCurrentUser,
         loading,
         error,
       }}
