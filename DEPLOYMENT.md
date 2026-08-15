@@ -20,10 +20,11 @@ The backend creates the schema and demo records on its first successful startup.
 ## 2. Railway backend
 
 1. Create a Railway project and choose **Deploy from GitHub repo**.
-2. Select `prachidoshi7/MedoraAI` and the branch to deploy.
-3. Keep the service source at the repository root. Do not set `/backend` as the Root Directory because the Docker build also needs `models/` and `newwwchestmodel/`.
-4. Railway reads `railway.json`, builds `backend/Dockerfile`, and checks `/health` before making a deployment active.
-5. In **Networking**, generate a public Railway domain.
+2. In the GitHub repository's **Settings > Archives**, enable **Include Git LFS objects in archives**. The production brain, lung, and kidney weights are stored with Git LFS.
+3. Select `prachidoshi7/MedoraAI` and the branch to deploy.
+4. Keep the service source at the repository root. Do not set `/backend` as the Root Directory because the Docker build also needs `models/` and `newwwchestmodel/`.
+5. Railway reads `railway.json`, builds `backend/Dockerfile`, and checks `/health` before making a deployment active.
+6. In **Networking**, generate a public Railway domain.
 
 The same image can be built locally from the repository root:
 
