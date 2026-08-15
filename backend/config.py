@@ -28,6 +28,10 @@ class Settings(BaseSettings):
 
     # --- Database ---
     DATA_DIR: str = Field(default="./data", description="Root directory for runtime data")
+    DATABASE_URL: Optional[str] = Field(
+        default=None,
+        description="PostgreSQL/Neon connection string. Falls back to local SQLite when unset.",
+    )
 
     # --- ML Models ---
     CHEST_MODEL_ID: str = Field(
@@ -121,6 +125,10 @@ class Settings(BaseSettings):
         "http://127.0.0.1:3000",
         "http://127.0.0.1:5173",
     ]
+    CORS_ORIGIN_REGEX: Optional[str] = Field(
+        default=None,
+        description="Optional regex for trusted preview origins, such as Vercel preview domains.",
+    )
 
     # --- File Upload ---
     MAX_FILE_SIZE_MB: int = 20
@@ -135,6 +143,14 @@ class Settings(BaseSettings):
 
     @property
     def database_url(self) -> str:
+        if self.DATABASE_URL:
+            # Neon supplies a standard PostgreSQL URL. Select Psycopg 3
+            # explicitly so deployments do not depend on legacy psycopg2.
+            if self.DATABASE_URL.startswith("postgresql://"):
+                return self.DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
+            if self.DATABASE_URL.startswith("postgres://"):
+                return self.DATABASE_URL.replace("postgres://", "postgresql+psycopg://", 1)
+            return self.DATABASE_URL
         db_path = os.path.join(self.DATA_DIR, "app.db")
         return f"sqlite:///{db_path}"
 

@@ -19,7 +19,7 @@ import ResultsPage from './pages/ResultsPage';
 import UploadPage from './pages/UploadPage';
 import type { UserRole } from './types';
 import BrandLogo from './components/BrandLogo';
-import { updateMe, uploadProfileAvatar } from './api/client';
+import { apiAssetUrl, updateMe, uploadProfileAvatar } from './api/client';
 
 const homeByRole: Record<UserRole, string> = {
   patient: '/patient/dashboard',
@@ -119,11 +119,11 @@ function AccountMenu() {
   };
   return <div className="account-menu">
     <button className="account-trigger" onClick={() => { setProfile({ full_name: user.full_name, email: user.email, phone: user.phone }); setOpen((value) => !value); }} aria-expanded={open}>
-      <span className="doctor-avatar">{user.avatar_url ? <img src={user.avatar_url} alt="" /> : user.full_name.slice(0, 1)}</span><span><small>Patient profile</small><strong>{user.full_name}</strong></span><b>⌄</b>
+      <span className="doctor-avatar">{user.avatar_url ? <img src={apiAssetUrl(user.avatar_url)} alt="" /> : user.full_name.slice(0, 1)}</span><span><small>Patient profile</small><strong>{user.full_name}</strong></span><b>⌄</b>
     </button>
     {open && <form className="account-panel" onSubmit={saveProfile}>
       <header><div><small>Account</small><strong>Profile settings</strong></div><button type="button" onClick={() => setOpen(false)} aria-label="Close profile">×</button></header>
-      <button type="button" className="profile-photo-control" onClick={() => fileInput.current?.click()} disabled={saving}><span className="doctor-avatar">{user.avatar_url ? <img src={user.avatar_url} alt="" /> : user.full_name.slice(0, 1)}</span><span>Update profile picture<small>JPG, PNG or WebP · max 5 MB</small></span></button>
+      <button type="button" className="profile-photo-control" onClick={() => fileInput.current?.click()} disabled={saving}><span className="doctor-avatar">{user.avatar_url ? <img src={apiAssetUrl(user.avatar_url)} alt="" /> : user.full_name.slice(0, 1)}</span><span>Update profile picture<small>JPG, PNG or WebP · max 5 MB</small></span></button>
       <input ref={fileInput} className="sr-only" type="file" accept="image/jpeg,image/png,image/webp" onChange={changeAvatar} />
       <label><span>Name</span><input value={profile.full_name} onChange={(event) => setProfile({ ...profile, full_name: event.target.value })} required /></label>
       <label><span>Phone number</span><input type="tel" value={profile.phone} onChange={(event) => setProfile({ ...profile, phone: event.target.value })} /></label>

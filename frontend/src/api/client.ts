@@ -14,10 +14,17 @@ import type {
   DoctorCreateInput, DoctorUpdateInput, ProfileUpdateInput
 } from '../types';
 
+const API_ORIGIN = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
+
 const api = axios.create({
-  baseURL: '/api/v1',
+  baseURL: `${API_ORIGIN}/api/v1`,
   timeout: 60000,
 });
+
+export function apiAssetUrl(path: string): string {
+  if (!path || /^(https?:|blob:|data:)/i.test(path) || !API_ORIGIN) return path;
+  return `${API_ORIGIN}${path.startsWith('/') ? path : `/${path}`}`;
+}
 
 export function setAuthToken(token: string | null) {
   if (token) {
