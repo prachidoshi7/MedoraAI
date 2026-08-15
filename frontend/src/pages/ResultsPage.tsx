@@ -12,7 +12,7 @@ import type { AnalysisResponse, ReportData } from '../types';
 type ReportTab = 'doctor' | 'patient';
 
 const REPORT_POLL_INTERVAL_MS = 1000;
-const REPORT_POLL_TIMEOUT_MS = 90000;
+const REPORT_POLL_TIMEOUT_MS = 180000;
 
 function wait(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -91,7 +91,7 @@ export default function ResultsPage() {
             throw requestError;
           }
         }
-        throw new Error('Report generation did not finish within 90 seconds.');
+        throw new Error('Report generation did not finish within 3 minutes.');
       } catch (requestError: any) {
         if (!cancelled) {
           setError(requestError.response?.data?.detail || requestError.message || 'This report could not be loaded.');
@@ -112,7 +112,7 @@ export default function ResultsPage() {
       <div className="workspace-page results-loading" aria-label="Loading report">
         <p className="eyebrow">Image analysis complete</p>
         <h1>Preparing the image-aware clinical draft.</h1>
-        <p>Gemini is reviewing the full supplied image. Classification and localization are already available below.</p>
+        <p>The primary image-aware reporting model is reviewing the supplied image. Experimental classification and localization remain secondary evidence.</p>
         {analysis ? (
           <div className="result-grid">
             <ScanViewer

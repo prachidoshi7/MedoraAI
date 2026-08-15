@@ -192,6 +192,9 @@ export default function ReportEditor({ scanId, report, onReportChange }: ReportE
 
   const communicationIsRoutine = isRoutineCommunication(draft.critical_communication);
   const examName = ({ brain_mri: 'Limited brain MRI image', chest_xray: 'Chest radiograph', lung_ct: 'Limited lung CT image', kidney_us: 'Kidney ultrasound image' } as Record<string, string>)[report.scan_type] || 'Medical imaging study';
+  const reportSource = report.llm_provider === 'maira-2'
+    ? 'MAIRA-2 independent image review'
+    : `${report.llm_provider || 'AI'} image-report draft`;
 
   const jumpToSection = (key: DraftKey) => {
     document.getElementById(`report-section-${key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -246,12 +249,12 @@ export default function ReportEditor({ scanId, report, onReportChange }: ReportE
         <div className="report-title-block">
           <div className="report-status-line">
             <span className="report-status-badge"><i /> {approved ? 'Doctor approved' : 'Preliminary'}</span>
-            <span>Diagnostic imaging</span>
+            <span>{reportSource}</span>
             <span>Unverified draft</span>
           </div>
-          <p className="eyebrow">Radiology report</p>
+          <p className="eyebrow">Primary image review</p>
           <h2>Preliminary imaging interpretation</h2>
-          <p>Review every section against the complete source examination before signing.</p>
+          <p>This image-aware draft is the primary AI review. Verify every section against the complete source examination before signing.</p>
         </div>
         <div className="report-header-actions">
           {canRegenerate && <button className="button button--secondary" onClick={() => void regenerate()} disabled={regenerating || downloading}>

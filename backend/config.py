@@ -31,16 +31,20 @@ class Settings(BaseSettings):
 
     # --- ML Models ---
     CHEST_MODEL_ID: str = Field(
-        default="kaan-ylmn/rad-dino-chexpert",
-        description="Hugging Face RAD-DINO checkpoint with a CheXpert classification head.",
+        default="microsoft/rad-dino",
+        description="RAD-DINO backbone used by the local three-class chest head.",
     )
     CHEST_MODEL_REVISION: str = Field(
-        default="db02e1b7234dd83c6d7c4485963ef5b22df9e5db",
-        description="Immutable Hugging Face revision used for reproducible chest inference.",
+        default="",
+        description="Optional immutable Hugging Face RAD-DINO revision.",
     )
     CHEST_MODEL_CACHE_DIR: Optional[str] = Field(
         default=None,
         description="Optional Hugging Face cache directory. Uses the standard HF cache when blank.",
+    )
+    CHEST_MODEL_PATH: Optional[str] = Field(
+        default="newwwchestmodel/chest_xray_rad_dino_model/rad_dino_chest_xray_classifier.pth",
+        description="Path to the reference three-class RAD-DINO checkpoint.",
     )
     CHEST_MODEL_LOCAL_FILES_ONLY: bool = False
     CHEST_DEVICE: str = Field(default="auto", description="auto, cpu, or cuda")
@@ -66,6 +70,15 @@ class Settings(BaseSettings):
     SCAN_TYPE_MIN_CONFIDENCE: float = 0.85
 
     # --- Clinical report generation ---
+    MAIRA_API_URL: Optional[str] = Field(
+        default=None,
+        description="Base URL for the MAIRA-2 chest X-ray report service",
+    )
+    MAIRA_TIMEOUT_SECONDS: float = Field(
+        default=120.0,
+        gt=0,
+        description="Maximum time to wait for MAIRA-2 before using the existing fallback pipeline",
+    )
     GEMINI_API_KEY: Optional[str] = Field(
         default=None,
         description="Google Gemini API key for multimodal image-aware reports"
@@ -143,11 +156,13 @@ class Settings(BaseSettings):
 
     def has_llm_key(self) -> bool:
         """Check if any LLM API key is configured."""
-        return bool(self.GEMINI_API_KEY or self.GROQ_API_KEY or self.ANTHROPIC_API_KEY or self.OPENAI_API_KEY)
+        return bool(self.MAIRA_API_URL or self.GEMINI_API_KEY or self.GROQ_API_KEY or self.ANTHROPIC_API_KEY or self.OPENAI_API_KEY)
 
     def get_llm_provider_name(self) -> str:
         """Return the name of the first available LLM provider."""
-        if self.GEMINI_API_KEY:
+        if self.MAIRA_API_URL:
+            return "maira-2"
+        elif self.GEMINI_API_KEY:
             return "gemini"
         elif self.GROQ_API_KEY:
             return "groq"
@@ -172,6 +187,10 @@ class Settings(BaseSettings):
     @property
     def chest_model_cache_dir(self) -> Optional[str]:
         return self.resolve_path(self.CHEST_MODEL_CACHE_DIR)
+
+    @property
+    def chest_model_path(self) -> Optional[str]:
+        return self.resolve_path(self.CHEST_MODEL_PATH)
 
     @property
     def lung_model_path(self) -> Optional[str]:

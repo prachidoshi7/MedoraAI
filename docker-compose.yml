@@ -8,12 +8,12 @@ services:
       - "8000:8000"
     volumes:
       - ./models:/app/models:ro
+      - ./newwwchestmodel/chest_xray_rad_dino_model:/app/chest_model:ro
       - medoraai-data:/app/data
     environment:
       - SECRET_KEY=${SECRET_KEY:-medoraai-hackathon-secret}
       - DATA_DIR=/app/data
-      - CHEST_MODEL_ID=${CHEST_MODEL_ID:-kaan-ylmn/rad-dino-chexpert}
-      - CHEST_MODEL_REVISION=${CHEST_MODEL_REVISION:-db02e1b7234dd83c6d7c4485963ef5b22df9e5db}
+      - CHEST_MODEL_PATH=/app/chest_model/rad_dino_chest_xray_classifier.pth
       - CHEST_MODEL_CACHE_DIR=/app/data/huggingface
       - CHEST_MODEL_LOCAL_FILES_ONLY=${CHEST_MODEL_LOCAL_FILES_ONLY:-false}
       - CHEST_DEVICE=${CHEST_DEVICE:-auto}
@@ -23,6 +23,8 @@ services:
       - BRAIN_MODEL_PATH=/app/models/best_brain_model.keras
       - LUNG_MODEL_PATH=/app/models/cnn_lung_model.pth
       - KIDNEY_MODEL_PATH=/app/models/cnn_Kidney_Stone_model.pth
+      - MAIRA_API_URL=${MAIRA_API_URL:-https://grass-quiet-icy.ngrok-free.dev}
+      - MAIRA_TIMEOUT_SECONDS=${MAIRA_TIMEOUT_SECONDS:-120}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3-flash-preview}
       - GROQ_API_KEY=${GROQ_API_KEY:-}

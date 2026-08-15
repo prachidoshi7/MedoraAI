@@ -50,26 +50,20 @@ async def lifespan(app: FastAPI):
     # 4. Load ML models
     logger.info("🧠 Loading ML models...")
 
-    # Chest X-Ray Classifier (RAD-DINO + CheXpert). The pinned artifact is
-    # downloaded once into the Hugging Face cache on first startup.
+    # Chest X-Ray classifier and heatmap ported from the madora reference.
     app.state.chest_classifier = None
-    app.state.chest_attribution = None
+    app.state.chest_gradcam = None
     try:
         from services.chest_classifier import ChestXRayClassifier
-        from services.chest_attribution import ChestRadDinoAttribution
+        from services.chest_gradcam import ChestGradCAM
 
         chest_classifier = ChestXRayClassifier(
-            model_id=settings.CHEST_MODEL_ID,
-            revision=settings.CHEST_MODEL_REVISION,
-            device=settings.CHEST_DEVICE,
-            cache_dir=settings.chest_model_cache_dir,
-            local_files_only=settings.CHEST_MODEL_LOCAL_FILES_ONLY,
-            pathology_threshold=settings.CHEST_PATHOLOGY_THRESHOLD,
-            secondary_threshold=settings.CHEST_SECONDARY_THRESHOLD,
+            model_path=settings.chest_model_path,
+            device="cpu",
         )
         app.state.chest_classifier = chest_classifier
-        app.state.chest_attribution = ChestRadDinoAttribution(chest_classifier)
-        logger.info("  ✅ Chest X-Ray classifier (RAD-DINO + CheXpert) loaded.")
+        app.state.chest_gradcam = ChestGradCAM(chest_classifier)
+        logger.info("  ✅ Chest X-Ray classifier (RAD-DINO, 3-class) loaded.")
     except Exception as exc:
         logger.warning("  ⚠️ RAD-DINO chest classifier unavailable: %s", exc)
 
@@ -99,8 +93,7 @@ async def lifespan(app: FastAPI):
         app.state.kidney_classifier = None
         logger.warning("  ⚠️ Kidney ultrasound classifier unavailable: %s", exc)
 
-    # 5. Initialize convolutional-model Grad-CAM engines. RAD-DINO's
-    # transformer attribution engine was initialized with its classifier above.
+    # 5. Initialize remaining model explainability engines.
     from services.brain_gradcam import BrainGradCAM
 
     app.state.brain_gradcam = BrainGradCAM(brain_classifier)
@@ -126,6 +119,8 @@ async def lifespan(app: FastAPI):
     # 7. Initialize LLM Report Engine
     from services.llm_report_engine import LLMReportEngine
     app.state.report_engine = LLMReportEngine(
+        maira_api_url=settings.MAIRA_API_URL,
+        maira_timeout_seconds=settings.MAIRA_TIMEOUT_SECONDS,
         gemini_api_key=settings.GEMINI_API_KEY,
         gemini_model=settings.GEMINI_MODEL,
         sarvam_api_key=settings.SARVAM_API_KEY,
