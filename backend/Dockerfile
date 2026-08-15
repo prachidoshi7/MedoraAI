@@ -11,12 +11,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
+COPY backend/requirements.txt .
 RUN pip install torch==2.4.1 torchvision==0.19.1 \
         --index-url https://download.pytorch.org/whl/cpu \
     && pip install -r requirements.txt
 
-COPY . .
+COPY backend/ /app/backend/
+COPY models/ /app/models/
+COPY newwwchestmodel/chest_xray_rad_dino_model/ /app/newwwchestmodel/chest_xray_rad_dino_model/
 
 RUN mkdir -p /app/data/uploads /app/data/heatmaps /app/data/thumbnails /app/models
 
@@ -25,4 +27,4 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=10m \
   CMD curl -f http://localhost:8000/health || exit 1
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]

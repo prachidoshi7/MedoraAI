@@ -27,11 +27,14 @@ def get_engine(database_url: str = None):
             os.makedirs(data_dir, exist_ok=True)
             db_path = os.path.join(data_dir, "app.db")
             database_url = f"sqlite:///{db_path}"
-        _engine = create_engine(
-            database_url,
-            connect_args={"check_same_thread": False},  # Required for SQLite + FastAPI
-            echo=False,
-        )
+        is_sqlite = database_url.startswith("sqlite")
+        engine_options = {
+            "echo": False,
+            "pool_pre_ping": True,
+        }
+        if is_sqlite:
+            engine_options["connect_args"] = {"check_same_thread": False}
+        _engine = create_engine(database_url, **engine_options)
     return _engine
 
 

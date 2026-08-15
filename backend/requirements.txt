@@ -14,6 +14,7 @@ bcrypt==4.0.1
 
 # Database and configuration
 sqlalchemy==2.0.31
+psycopg[binary]==3.2.9
 pydantic-settings==2.3.4
 python-dotenv==1.0.1
 

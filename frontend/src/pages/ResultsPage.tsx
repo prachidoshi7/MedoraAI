@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { getReport } from '../api/client';
+import { apiAssetUrl, getReport } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import PatientReport from '../components/PatientReport';
 import PatientFinalReport from '../components/PatientFinalReport';
@@ -70,7 +70,7 @@ export default function ResultsPage() {
                 },
                 localization: {
                   type: 'heatmap',
-                  heatmap_url: `/static/heatmaps/${scanId}.png`,
+                  heatmap_url: apiAssetUrl(`/static/heatmaps/${scanId}.png`),
                   bounding_boxes: [],
                 },
                 analysis_time_ms: 0,
@@ -116,8 +116,8 @@ export default function ResultsPage() {
         {analysis ? (
           <div className="result-grid">
             <ScanViewer
-              scanImageUrl={`/static/uploads/${scanId}.png`}
-              heatmapUrl={analysis.localization.heatmap_url}
+              scanImageUrl={apiAssetUrl(`/static/uploads/${scanId}.png`)}
+              heatmapUrl={apiAssetUrl(analysis.localization.heatmap_url)}
               scanType={analysis.scan_type}
               heatmapTargetLabel={analysis.classification.heatmap_target_label}
             />
@@ -187,13 +187,13 @@ export default function ResultsPage() {
       </div>}
 
       {user?.role === 'patient' ? (
-        <PatientFinalReport scanId={scanId} report={report} heatmapUrl={analysis.localization.heatmap_url} originalImageUrl={`/static/uploads/${scanId}.png`} />
+        <PatientFinalReport scanId={scanId} report={report} heatmapUrl={apiAssetUrl(analysis.localization.heatmap_url)} originalImageUrl={apiAssetUrl(`/static/uploads/${scanId}.png`)} />
       ) : tab === 'doctor' ? (
         <div className="doctor-report-layout" role="tabpanel">
           <div className="result-grid">
             <ScanViewer
-              scanImageUrl={`/static/uploads/${scanId}.png`}
-              heatmapUrl={analysis.localization.heatmap_url}
+              scanImageUrl={apiAssetUrl(`/static/uploads/${scanId}.png`)}
+              heatmapUrl={apiAssetUrl(analysis.localization.heatmap_url)}
               scanType={analysis.scan_type}
               heatmapTargetLabel={report.heatmap_target_label || analysis.classification.heatmap_target_label}
             />
