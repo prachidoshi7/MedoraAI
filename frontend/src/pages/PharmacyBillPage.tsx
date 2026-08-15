@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { getPharmacyBill, markPharmacyBillDispensed } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import type { PharmacyBill } from '../types';
+import BrandLogo from '../components/BrandLogo';
 
 const currency = new Intl.NumberFormat('en-IN', {
   style: 'currency',
@@ -60,7 +61,7 @@ export default function PharmacyBillPage() {
 
       <article className="medicine-invoice">
         <header>
-          <div className="invoice-brand"><span className="brand-mark" /><div><strong>{bill.pharmacy.full_name}</strong><small>Authorized medicine shop</small></div></div>
+          <div className="invoice-brand"><BrandLogo className="medora-logo--invoice" /><div><strong>{bill.pharmacy.full_name}</strong><small>Authorized medicine shop</small></div></div>
           <div className="invoice-number"><span>Tax invoice</span><strong>{bill.invoice_number}</strong><small>{dateLabel(bill.created_at)}</small></div>
         </header>
 

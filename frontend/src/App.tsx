@@ -16,6 +16,7 @@ import RegisterPage from './pages/RegisterPage';
 import ResultsPage from './pages/ResultsPage';
 import UploadPage from './pages/UploadPage';
 import type { UserRole } from './types';
+import BrandLogo from './components/BrandLogo';
 
 const homeByRole: Record<UserRole, string> = {
   patient: '/patient/dashboard',
@@ -39,7 +40,7 @@ function HomeRedirect() {
 }
 
 function Brand() {
-  return <span className="brand-lockup"><span className="brand-mark" /><span><strong>Medora</strong><small>Hospital intelligence</small></span></span>;
+  return <BrandLogo className="medora-logo--sidebar" />;
 }
 
 const navByRole: Record<UserRole, Array<{ path: string; label: string; icon: string }>> = {

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import BrandLogo from '../components/BrandLogo';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
@@ -42,8 +43,8 @@ export default function LoginPage() {
     <div className="login-page">
       <section className="login-editorial" aria-labelledby="login-wordmark">
         <div className="login-brand">
-          <span className="brand-mark brand-mark--light" aria-hidden="true"><i /><i /></span>
-          <span>MEDORA / CLINICAL IMAGING</span>
+          <BrandLogo className="medora-logo--auth" variant="login" />
+          <span>Clinical imaging</span>
         </div>
         <div className="login-hero-copy">
           <p className="eyebrow eyebrow--light">Built for clinical pace</p>
