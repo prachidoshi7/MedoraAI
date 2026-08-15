@@ -51,14 +51,11 @@ h1, h2, h3 { font-family: var(--display); font-weight: 600; letter-spacing: -.01
 /* Application shell */
 .app-shell { display: grid; min-height: 100vh; grid-template-columns: 264px minmax(0, 1fr); }
 .site-sidebar { position: sticky; top: 0; display: flex; height: 100vh; min-height: 0; flex-direction: column; gap: 20px; overflow: hidden; padding: 22px 18px; border-right: 1px solid var(--line); background: var(--panel); }
-.brand-button { align-self: flex-start; padding: 2px 4px 6px; }
-.brand-lockup { display: flex; align-items: center; gap: 10px; text-align: left; }
-.brand-lockup > span:last-child { display: grid; }
-.brand-lockup strong { font-family: var(--display); font-size: 18px; font-weight: 700; letter-spacing: -.02em; line-height: 1; }
-.brand-lockup small { margin-top: 3px; color: var(--ink-soft); font-family: var(--mono); font-size: 7.5px; letter-spacing: .08em; text-transform: uppercase; }
-.brand-mark { position: relative; width: 25px; height: 25px; flex: 0 0 auto; border-radius: 6px; background: linear-gradient(135deg, var(--heat-red), var(--heat-amber)); box-shadow: 0 3px 9px rgba(232,84,42,.3); }
-.brand-mark::after { content: ''; position: absolute; inset: 5px; border: 1.4px solid rgba(255,255,255,.9); border-radius: 2px; }
-.brand-mark--light { background: rgba(255,255,255,.15); box-shadow: none; }
+.brand-button { align-self: flex-start; padding: 0; border-radius: 10px; }
+.brand-button:focus-visible { outline: 2px solid var(--heat-red); outline-offset: 3px; }
+.medora-logo { display: block; width: 160px; aspect-ratio: 38 / 25; flex: 0 0 auto; }
+.medora-logo img { width: 100%; height: 100%; object-fit: contain; }
+.medora-logo--sidebar { width: 118px; }
 
 .new-study-button { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 12px; border-radius: 10px; background: var(--ink); color: var(--paper); font-family: var(--mono); font-size: 12px; letter-spacing: .02em; transition: transform .25s var(--ease), box-shadow .25s; }
 .new-study-button:hover, .new-study-button.active { transform: translateY(-2px); box-shadow: 0 10px 20px rgba(20,24,27,.18); }
@@ -126,7 +123,8 @@ h1, h2, h3 { font-family: var(--display); font-weight: 600; letter-spacing: -.01
 .login-editorial::before { content: ''; position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px); background-size: 34px 34px; mask-image: linear-gradient(to bottom,black,transparent 85%); }
 .login-editorial::after { content: ''; position: absolute; right: -12%; bottom: -24%; width: 65%; aspect-ratio: 1; border: 1px solid rgba(242,169,59,.3); border-radius: 50%; box-shadow: 0 0 0 8vw rgba(232,84,42,.035),0 0 0 16vw rgba(242,169,59,.02); }
 .login-brand, .login-hero-copy, .login-index { position: relative; z-index: 1; }
-.login-brand { display: flex; align-items: center; gap: 11px; font-family: var(--mono); font-size: 10px; letter-spacing: .1em; }
+.login-brand { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; }
+.medora-logo--auth { width: clamp(150px, 15vw, 190px); }
 .login-hero-copy { max-width: 680px; }
 .login-hero-copy h1 { margin-bottom: 25px; font-size: clamp(52px,7vw,104px); line-height: .92; }
 .login-hero-copy h1 em { background: linear-gradient(100deg,var(--heat-red),var(--heat-amber)); background-clip: text; color: transparent; font-style: normal; }
@@ -412,6 +410,7 @@ h1, h2, h3 { font-family: var(--display); font-weight: 600; letter-spacing: -.01
 .medicine-invoice > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 30px; padding: 27px 30px; border-bottom: 3px solid #20353b; }
 .invoice-brand { display: flex; align-items: center; gap: 12px; }
 .invoice-brand > div { display: grid; }
+.medora-logo--invoice { width: 112px; }
 .invoice-brand strong { font-family: var(--display); font-size: 18px; }
 .invoice-brand small,.invoice-number small { color: var(--ink-soft); font-family: var(--mono); font-size: 7.5px; text-transform: uppercase; }
 .invoice-number { display: grid; justify-items: end; text-align: right; }
@@ -803,6 +802,7 @@ h1, h2, h3 { font-family: var(--display); font-weight: 600; letter-spacing: -.01
   .new-study-button { width: auto; padding: 9px 13px; }
   .sidebar-history, .sidebar-footer { display: none; }
   .hospital-sidebar { grid-template-columns: auto 1fr; }
+  .medora-logo--sidebar { width: 96px; }
   .hospital-sidebar .role-chip,.hospital-sidebar .journey-map { display: none; }
   .role-navigation { display: flex; justify-content: flex-end; }
   .role-navigation a { padding: 8px; font-size: 9px; }
@@ -903,6 +903,8 @@ h1, h2, h3 { font-family: var(--display); font-weight: 600; letter-spacing: -.01
   .bill-page-actions { align-items: stretch; flex-direction: column; }
   .bill-page-actions > div:last-child { justify-content: flex-start; }
   .invoice-parties { grid-template-columns: 1fr; }
+  .medicine-invoice > header { flex-direction: column; }
+  .invoice-number { justify-items: start; text-align: left; }
   .invoice-parties > div { min-height: 0; border-top: 1px solid var(--line); border-left: 0; }
   .invoice-parties > div:first-child { border-top: 0; }
   .invoice-footer { grid-template-columns: 1fr; }
