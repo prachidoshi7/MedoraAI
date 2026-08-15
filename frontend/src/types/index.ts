@@ -52,9 +52,9 @@ export const SCAN_TYPES: ScanTypeConfig[] = [
     id: 'chest_xray',
     label: 'Chest X-Ray',
     icon: '🫁',
-    model: 'RAD-DINO + CheXpert',
-    description: 'Foundation-model thoracic finding classification',
-    classes: 'Atelectasis, Cardiomegaly, Edema, Consolidation, Pneumonia, Pneumothorax, Pleural Effusion, Fracture, Normal',
+    model: 'RAD-DINO · 3-class research head',
+    description: 'Secondary experimental chest classification; MAIRA-2 drafts the primary image report',
+    classes: 'Normal, Pneumonia, Tuberculosis',
   },
   {
     id: 'brain_mri',
@@ -303,6 +303,7 @@ export interface ReportData {
   critical_communication: string;
   severity: string;
   disclaimer: string;
+  llm_provider?: string;
   generated_at: string;
   heatmap_target_label?: string;
   is_low_confidence?: boolean;

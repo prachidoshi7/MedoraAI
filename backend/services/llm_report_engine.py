@@ -76,15 +76,18 @@ class LLMReportEngine:
     Generates clinical reports using LLM APIs.
     
     Tries providers in priority order:
-    1. Gemini — image-aware multimodal reporting
-    2. Groq (Llama 3.1 70B) — text-only fallback
-    3. Anthropic Claude 3 Haiku — text-only fallback
-    4. OpenAI GPT-4o-mini — text-only fallback
-    5. Template fallback — no API key needed
+    1. MAIRA-2 — chest X-ray report generation
+    2. Gemini — image-aware multimodal reporting
+    3. Groq (Llama 3.1 70B) — text-only fallback
+    4. Anthropic Claude 3 Haiku — text-only fallback
+    5. OpenAI GPT-4o-mini — text-only fallback
+    6. Template fallback — no API key needed
     """
 
     def __init__(
         self,
+        maira_api_url: Optional[str] = None,
+        maira_timeout_seconds: float = 35.0,
         gemini_api_key: Optional[str] = None,
         gemini_model: str = "gemini-3-flash-preview",
         sarvam_api_key: Optional[str] = None,
@@ -93,6 +96,8 @@ class LLMReportEngine:
         anthropic_api_key: Optional[str] = None,
         openai_api_key: Optional[str] = None,
     ):
+        self.maira_api_url = maira_api_url.rstrip("/") if maira_api_url else None
+        self.maira_timeout_seconds = maira_timeout_seconds
         self.gemini_key = gemini_api_key
         self.gemini_model = gemini_model
         self.gemini_models = list(dict.fromkeys([
@@ -112,6 +117,8 @@ class LLMReportEngine:
         self._gemini_client_lock = threading.Lock()
 
         providers = []
+        if self.maira_api_url:
+            providers.append("maira-2")
         if self.gemini_key:
             providers.append("gemini")
         if self.groq_key:
@@ -178,7 +185,7 @@ CHEST-SPECIFIC INSTRUCTIONS:
 - Organize findings under these plain-text labels: LUNGS/AIRWAYS, PLEURA, CARDIOMEDIASTINAL SILHOUETTE, HILA, BONES/SOFT TISSUES, SUPPORT DEVICES.
 - Assess only what is visible. If a structure cannot be assessed, say so instead of assuming normality.
 - Do not infer AP versus PA, portable technique, inspiration, rotation, or upright/supine position unless clearly demonstrated.
-- "No Finding" means the classifier did not flag a trained label; it does not prove a normal radiograph.
+- "Normal" means that class scored highest among only three trained classes; it does not prove a normal radiograph.
 - A positive classifier label may be reported as visually suspected only if the image supports it; otherwise describe the discordance in the impression.
 - Do not include educational definitions of diseases in the report.
 
@@ -281,10 +288,16 @@ Generate a structured diagnostic report."""
         llm_provider = "template"
 
         # Try providers in order
-        if self.gemini_key and image is not None:
-            llm_report = await self._call_gemini(user_prompt, image)
+        if self.maira_api_url and scan_type == "chest_xray" and image is not None:
+            llm_report = await self._call_maira(image)
             if llm_report:
-                llm_provider = "gemini"
+                llm_provider = "maira-2"
+
+        if self.gemini_key and image is not None:
+            if llm_report is None:
+                llm_report = await self._call_gemini(user_prompt, image)
+                if llm_report:
+                    llm_provider = "gemini"
 
         if llm_report is None and self.groq_key:
             llm_report = await self._call_groq(user_prompt)
@@ -308,7 +321,7 @@ Generate a structured diagnostic report."""
         elif scan_type == "chest_xray" and not self._is_chest_report_supported(
             llm_report,
             result,
-            allow_visual_details=(llm_provider == "gemini"),
+            allow_visual_details=(llm_provider in {"maira-2", "gemini"}),
         ):
             logger.warning("LLM chest report contained unsupported findings. Falling back to template.")
             llm_report = self._generate_template_report(result, scan_type)
@@ -329,12 +342,13 @@ Generate a structured diagnostic report."""
         if scan_type == "chest_xray":
             methodology = (
                 "Classification was performed using the RAD-DINO ViT-B/14 chest-radiograph "
-                "foundation encoder with a 14-label CheXpert downstream classification head. "
-                "The model processes 518×518 images and outputs independent sigmoid finding scores. "
-                "Explainability was generated from class-targeted, gradient-weighted RAD-DINO "
-                "patch-token representations entering the final transformer block. "
-                "The heatmap is a model-attribution visualization, not confirmed lesion segmentation. "
-                f"Attribution target class: {heatmap_target_label}."
+                "foundation encoder with a local three-class downstream head trained for Normal, "
+                "Pneumonia, and Tuberculosis. The model processes 518×518 images and outputs a "
+                "mutually-exclusive softmax score distribution. "
+                "The accompanying heatmap uses the reference chest pipeline's lung-masked "
+                "image saliency visualization in the same resize and center-crop coordinate frame. "
+                "It is an explanatory image aid, not confirmed lesion segmentation. "
+                f"Displayed classifier class: {heatmap_target_label}."
             )
         elif scan_type == "brain_mri":
             methodology = (
@@ -396,16 +410,79 @@ Generate a structured diagnostic report."""
         )
         return report_payload
 
+    async def _call_maira(self, image) -> Optional[dict]:
+        """Send a frontal chest image to MAIRA-2 and normalize its report."""
+        try:
+            import httpx
+
+            # Keep the radiograph lossless. Some MAIRA deployments reject or
+            # mishandle a JPEG re-encoding even when the source is a valid PNG.
+            buffer = io.BytesIO()
+            image.convert("RGB").save(buffer, format="PNG")
+            timeout = httpx.Timeout(
+                self.maira_timeout_seconds,
+                connect=min(8.0, self.maira_timeout_seconds),
+            )
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.post(
+                    f"{self.maira_api_url}/generate",
+                    headers={"ngrok-skip-browser-warning": "true"},
+                    files={"frontal": ("frontal.png", buffer.getvalue(), "image/png")},
+                )
+                if response.is_error:
+                    raise RuntimeError(
+                        f"MAIRA-2 returned HTTP {response.status_code}: "
+                        f"{response.text[:1000]}"
+                    )
+                payload = response.json()
+
+            report = self._normalize_maira_response(payload)
+            logger.info("MAIRA-2 chest report generated successfully.")
+            return report
+        except Exception as exc:
+            logger.warning("MAIRA-2 report generation failed; using fallback pipeline: %s", exc)
+            return None
+
+    @classmethod
+    def _normalize_maira_response(cls, payload) -> dict:
+        """Accept structured or plain-text response shapes used by MAIRA servers."""
+        if not isinstance(payload, dict):
+            raise ValueError("MAIRA-2 response must be a JSON object")
+
+        if payload.get("findings") and payload.get("impression"):
+            return cls._parse_json_report(json.dumps(payload))
+
+        text = next(
+            (
+                str(payload[key]).strip()
+                for key in ("report", "generated_report", "generated_text", "output", "text")
+                if payload.get(key)
+            ),
+            "",
+        )
+        if not text:
+            raise ValueError("MAIRA-2 response contained no report text")
+
+        findings_match = re.search(
+            r"(?is)\bfindings?\s*:\s*(.*?)(?=\n\s*(?:impression|conclusion)\s*:|$)",
+            text,
+        )
+        impression_match = re.search(
+            r"(?is)\b(?:impression|conclusion)\s*:\s*(.*)$",
+            text,
+        )
+        findings = findings_match.group(1).strip() if findings_match else text
+        impression = impression_match.group(1).strip() if impression_match else text
+        if not findings or not impression:
+            raise ValueError("MAIRA-2 returned an unusable report")
+        return {"findings": findings, "impression": impression}
+
     async def _call_gemini(self, user_prompt: str, image) -> Optional[dict]:
         """Call Gemini with inline image data for image-aware report generation."""
-        try:
-            return await asyncio.wait_for(
-                asyncio.to_thread(self._call_gemini_sync, user_prompt, image),
-                timeout=40.0,
-            )
-        except asyncio.TimeoutError:
-            logger.warning("Image-aware report generation exceeded the 40-second safety limit")
-            return None
+        # Each HTTP attempt in the synchronous worker has its own strict timeout.
+        # Do not wrap the worker in asyncio.wait_for: cancelling a thread does not
+        # stop it, which previously let Gemini succeed after Groq had already run.
+        return await asyncio.to_thread(self._call_gemini_sync, user_prompt, image)
 
     def _call_gemini_sync(self, user_prompt: str, image) -> Optional[dict]:
         try:
@@ -633,7 +710,7 @@ ADDITIONAL SAFETY REQUIREMENTS:
                 "Limited assessment: a formal image-quality and anatomy-by-anatomy visual review "
                 "could not be generated. Subtle findings may not be represented."
             )
-            if label == "No Finding":
+            if label == "Normal":
                 findings = (
                     "LUNGS/AIRWAYS: No trained thoracic abnormality crossed the configured reporting threshold.\n"
                     "PLEURA: Not independently assessed in this fallback report.\n"
@@ -753,16 +830,15 @@ ADDITIONAL SAFETY REQUIREMENTS:
         heatmap_target_label = getattr(result, "heatmap_target_label", label)
 
         if scan_type == "chest_xray":
-            if label == "No Finding":
+            if label == "Normal":
                 findings = (
                     "TECHNIQUE: Frontal chest radiograph was analyzed using the MedoraAI "
-                    "RAD-DINO foundation encoder with a 14-label CheXpert classification head. "
-                    "Class-targeted patch-token attribution was computed "
+                    "RAD-DINO foundation encoder with a three-class chest classification head. "
+                    "The reference lung-masked image saliency heatmap was computed "
                     f"for the selected output ({heatmap_target_label}).\n\n"
                     "FINDINGS: The AI classifier did not identify any model-supported acute "
                     "cardiopulmonary abnormality above the configured reporting threshold. "
-                    "No pathology class produced a sigmoid activation score exceeding the "
-                    "minimum confidence threshold. The attribution map shows where the "
+                    "The Normal class received the highest softmax score. The attribution map shows where the "
                     "model focused its analysis, but no region triggered a pathology classification. "
                     "This automated result does not exclude subtle or early-stage pathology that "
                     "falls below model sensitivity."
@@ -801,14 +877,13 @@ ADDITIONAL SAFETY REQUIREMENTS:
 
                 findings = (
                     "TECHNIQUE: Frontal chest radiograph was analyzed using the MedoraAI "
-                    "RAD-DINO foundation encoder with a 14-label CheXpert classification head. "
-                    "Class-targeted gradient-weighted patch-token attribution was computed "
+                    "RAD-DINO foundation encoder with a three-class chest classification head. "
+                    "The reference lung-masked image saliency heatmap was computed "
                     f"targeting the {heatmap_target_label} class to visualize the region of "
                     "model attention most relevant to the primary finding.\n\n"
                     f"FINDINGS: The AI chest X-ray model produced findings suggestive of "
-                    f"{label} with a sigmoid activation confidence of {conf * 100:.1f}%. "
-                    f"The RAD-DINO attribution map highlights the patch-token region that "
-                    f"contributed most to this classification. "
+                    f"{label} with an uncalibrated softmax score of {conf * 100:.1f}%. "
+                    f"The chest heatmap highlights visually salient regions inside the lung mask. "
                     f"The highlighted region should be correlated with clinical findings and "
                     f"is NOT equivalent to radiologist-confirmed lesion localization. "
                     f"The findings are assessed as {severity.lower()} based on model "
@@ -1204,7 +1279,7 @@ ADDITIONAL SAFETY REQUIREMENTS:
 
     @staticmethod
     def _is_chest_report_supported(report: dict, result, allow_visual_details: bool = False) -> bool:
-        """Reject chest reports that mention unsupported model labels or invented specifics."""
+        """Reject text-only reports that invent findings absent from their supplied context."""
         try:
             from services.chest_classifier import CLASS_LABELS, NO_FINDING_LABEL
         except Exception:
@@ -1218,6 +1293,14 @@ ADDITIONAL SAFETY REQUIREMENTS:
             )
         ).lower()
 
+        # MAIRA-2 and Gemini inspect the radiograph itself. Their visual
+        # observations are allowed to differ from the supporting classifier;
+        # forcing agreement here discarded precisely the image evidence these
+        # providers were added to supply. Deterministic metadata grounding and
+        # clinical-text sanitization are still applied after this gate.
+        if allow_visual_details:
+            return True
+
         supported = {result.top_label.lower(), NO_FINDING_LABEL.lower()}
         supported.update(
             label.lower()
@@ -1229,9 +1312,6 @@ ADDITIONAL SAFETY REQUIREMENTS:
             normalized = label.lower()
             if normalized in text and normalized not in supported:
                 return False
-
-        if allow_visual_details:
-            return True
 
         blocked_terms = [
             "right upper lobe", "right middle lobe", "right lower lobe",
@@ -1431,7 +1511,7 @@ Do not add, remove, summarize, diagnose, or explain anything. Output only the tr
         """Immediate plain-English explanation that preserves diagnostic uncertainty."""
         label = str(report_data.get("top_label") or "Unknown").strip()
         explanations = {
-            "No Finding": "No condition from the chest patterns checked by this system was strongly identified.",
+            "Normal": "The Normal class scored highest among the three patterns checked; this does not exclude other conditions.",
             "Atelectasis": "Part of a lung may not be expanding as fully as expected.",
             "Cardiomegaly": "The outline of the heart may look larger than expected on this image.",
             "Effusion": "There may be fluid in the space around a lung.",
@@ -1442,6 +1522,7 @@ Do not add, remove, summarize, diagnose, or explain anything. Output only the tr
             "Lung Lesion": "The image may contain a focal area that needs direct medical review.",
             "Nodule": "The image may contain a small rounded spot that needs direct medical review.",
             "Pneumonia": "The image may show a lung pattern that can occur with infection.",
+            "Tuberculosis": "The image pattern may be compatible with tuberculosis, but clinical and microbiological confirmation are required.",
             "Pneumothorax": "There may be air around a lung, which can prevent the lung from fully expanding.",
             "Consolidation": "Part of a lung may be filled with fluid or inflammatory material rather than air.",
             "Edema": "There may be extra fluid within the lungs.",

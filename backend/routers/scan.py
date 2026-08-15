@@ -599,38 +599,22 @@ async def analyze_scan(
 
 
 def _classify_chest_xray(request: Request, image: Image.Image):
-    """Run RAD-DINO CheXpert chest X-ray classification."""
-    classifier = getattr(request.app.state, "chest_classifier", None)
-    if classifier is None:
-        raise RuntimeError(
-            "RAD-DINO chest model is unavailable. Check network/cache configuration and restart."
-        )
-    return classifier.predict(image)
+    """Run chest X-ray classification."""
+    return request.app.state.chest_classifier.predict(image)
 
 
 def _localize_chest_xray(request: Request, image: Image.Image, result):
-    """Generate class-targeted RAD-DINO patch-token attribution."""
+    """Generate the reference chest X-ray heatmap."""
     classifier = request.app.state.chest_classifier
-    attribution = getattr(request.app.state, "chest_attribution", None)
-    if attribution is None:
-        raise RuntimeError("RAD-DINO chest attribution engine is unavailable.")
-
+    gradcam = request.app.state.chest_gradcam
     input_tensor = classifier.preprocess(image)
     heatmap_target_idx = result.heatmap_target_idx
     heatmap_target_label = result.heatmap_target_label
-
-    heatmap_overlay, raw_attribution = attribution.generate_heatmap_and_raw(
-        image,
-        input_tensor,
-        heatmap_target_idx,
-        target_label=heatmap_target_label,
+    heatmap_overlay = gradcam.generate_heatmap(
+        image, input_tensor, heatmap_target_idx, target_label=heatmap_target_label,
     )
-    bboxes = attribution.heatmap_to_bboxes(
-        raw_attribution,
-        threshold=0.55,
-        label=f"{heatmap_target_label}_model_attribution",
-    )
-
+    raw_cam = gradcam.generate_raw_cam(input_tensor, heatmap_target_idx, image=image)
+    bboxes = gradcam.heatmap_to_bboxes(raw_cam, threshold=0.6)
     return heatmap_overlay, bboxes
 
 

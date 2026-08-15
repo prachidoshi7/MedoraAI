@@ -1,61 +1,34 @@
-"""RAD-DINO chest X-ray classification for MedoraAI.
-
-Microsoft's RAD-DINO is a self-supervised chest-radiograph encoder, not a
-diagnostic classifier by itself.  This module loads a CheXpert classifier
-fine-tuned on top of that backbone.  The small model architecture is defined
-locally so the application never executes mutable Python from the Hub.
-"""
-
-from __future__ import annotations
+"""MedoraAI chest X-ray classifier, ported from the madora reference."""
 
 import json
 import logging
-import math
-import threading
+import os
 from dataclasses import dataclass, field
 from typing import Optional
 
 import numpy as np
 import torch
 import torch.nn as nn
-from huggingface_hub import hf_hub_download
 from PIL import Image
-from transformers import AutoImageProcessor, Dinov2Config, Dinov2Model
+from torchvision import transforms
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL_ID = "kaan-ylmn/rad-dino-chexpert"
-DEFAULT_MODEL_REVISION = "db02e1b7234dd83c6d7c4485963ef5b22df9e5db"
-# CheXpert label order stored in the pinned downstream checkpoint.
-CLASS_LABELS = [
-    "No Finding",
-    "Enlarged Cardiomediastinum",
-    "Cardiomegaly",
-    "Lung Opacity",
-    "Lung Lesion",
-    "Edema",
-    "Consolidation",
-    "Pneumonia",
-    "Atelectasis",
-    "Pneumothorax",
-    "Pleural Effusion",
-    "Pleural Other",
-    "Fracture",
-    "Support Devices",
-]
-
-NO_FINDING_LABEL = "No Finding"
-SUPPORT_DEVICES_LABEL = "Support Devices"
-PATHOLOGY_LABELS = [
-    label for label in CLASS_LABELS
-    if label not in {NO_FINDING_LABEL, SUPPORT_DEVICES_LABEL}
-]
+DEFAULT_MODEL_NAME = "microsoft/rad-dino"
+INPUT_SIZE = 518
+HIDDEN_SIZE = 768
+CLASS_LABELS = ["Normal", "Pneumonia", "Tuberculosis"]
+NO_FINDING_LABEL = "Normal"
+PATHOLOGY_LABELS = [label for label in CLASS_LABELS if label != NO_FINDING_LABEL]
+MIN_PATHOLOGY_CONFIDENCE = 0.30
+LOW_CONFIDENCE_CEILING = 0.50
+SECONDARY_FINDING_THRESHOLD = 0.20
+_IMAGENET_MEAN = [0.485, 0.456, 0.406]
+_IMAGENET_STD = [0.229, 0.224, 0.225]
 
 
 @dataclass
 class ClassificationResult:
-    """Normalized result consumed by the scan and report pipelines."""
-
     top_label: str
     confidence: float
     all_scores: dict[str, float]
@@ -65,247 +38,166 @@ class ClassificationResult:
     secondary_findings: list[dict] = field(default_factory=list)
     heatmap_target_label: str = ""
     heatmap_target_idx: int = 0
-    model_name: str = "RAD-DINO + CheXpert"
 
 
 def confidence_to_severity(confidence: float, label: str) -> str:
-    """Map a model score to the existing non-clinical UI severity bucket."""
     if label == NO_FINDING_LABEL:
         return "Normal"
-    if confidence < 0.60:
+    if confidence < 0.50:
         return "Mild"
-    if confidence < 0.80:
+    if confidence < 0.75:
         return "Moderate"
     return "Severe"
 
 
-def build_classification_result(
-    probabilities: np.ndarray,
-    *,
-    pathology_threshold: float = 0.50,
-    secondary_threshold: float = 0.35,
-) -> ClassificationResult:
-    """Convert 14 independent CheXpert probabilities into the API contract.
-
-    CheXpert is multi-label, so sigmoid outputs are thresholded independently.
-    ``No Finding`` is selected only when no diagnostic pathology crosses the
-    configured threshold. Support devices remain an auxiliary finding and are
-    never promoted to the primary diagnosis.
-    """
-    values = np.asarray(probabilities, dtype=np.float32).reshape(-1)
-    if values.size != len(CLASS_LABELS):
-        raise ValueError(
-            f"Expected {len(CLASS_LABELS)} CheXpert scores, received {values.size}."
-        )
-    if not np.isfinite(values).all():
-        raise ValueError("The chest classifier returned a non-finite score.")
-
-    values = np.clip(values, 0.0, 1.0)
-    all_scores = {
-        label: round(float(score), 4)
-        for label, score in zip(CLASS_LABELS, values)
-    }
-
-    pathology_indices = [CLASS_LABELS.index(label) for label in PATHOLOGY_LABELS]
-    best_pathology_idx = max(pathology_indices, key=lambda idx: float(values[idx]))
-    best_pathology_score = float(values[best_pathology_idx])
-    no_finding_idx = CLASS_LABELS.index(NO_FINDING_LABEL)
-
-    if best_pathology_score >= pathology_threshold:
-        top_idx = best_pathology_idx
-    else:
-        top_idx = no_finding_idx
-
-    top_label = CLASS_LABELS[top_idx]
-    top_confidence = float(values[top_idx])
-    secondary_findings = [
-        {"label": label, "score": round(float(values[index]), 4)}
-        for index, label in enumerate(CLASS_LABELS)
-        if label not in {NO_FINDING_LABEL, top_label}
-        and float(values[index]) >= secondary_threshold
-    ]
-    secondary_findings.sort(key=lambda item: item["score"], reverse=True)
-
-    return ClassificationResult(
-        top_label=top_label,
-        confidence=round(top_confidence, 4),
-        all_scores=all_scores,
-        severity=confidence_to_severity(top_confidence, top_label),
-        is_low_confidence=(
-            top_confidence < pathology_threshold
-            if top_label == NO_FINDING_LABEL
-            else top_confidence < 0.65
-        ),
-        secondary_findings=secondary_findings,
-        heatmap_target_label=top_label,
-        heatmap_target_idx=top_idx,
-    )
-
-
-class RadDinoCheXpertModel(nn.Module):
-    """Reviewed local equivalent of the checkpoint's 14-label model class."""
-
-    def __init__(self, config: Dinov2Config):
+class RadDinoClassifier(nn.Module):
+    def __init__(self, model_name: str = DEFAULT_MODEL_NAME, num_classes: int = 3):
         super().__init__()
-        self.config = config
-        self.dinov2 = Dinov2Model(config)
-        self.dropout = nn.Dropout(float(getattr(config, "classifier_dropout", 0.1)))
-        self.classifier = nn.Linear(config.hidden_size, len(CLASS_LABELS))
+        from transformers import AutoModel
+
+        logger.info("Initializing RadDinoClassifier backbone: %s", model_name)
+        self.backbone = AutoModel.from_pretrained(model_name)
+        self.classifier = nn.Sequential(
+            nn.LayerNorm(HIDDEN_SIZE),
+            nn.Dropout(0.1),
+            nn.Linear(HIDDEN_SIZE, num_classes),
+        )
 
     def forward(self, pixel_values: torch.Tensor) -> torch.Tensor:
-        output = self.dinov2(pixel_values=pixel_values, return_dict=True)
-        cls_embedding = output.last_hidden_state[:, 0]
-        return self.classifier(self.dropout(cls_embedding))
+        outputs = self.backbone(pixel_values=pixel_values)
+        return self.classifier(outputs.last_hidden_state[:, 0])
 
 
 class ChestXRayClassifier:
-    """RAD-DINO backbone with a pinned, fine-tuned CheXpert classification head."""
-
-    def __init__(
-        self,
-        model_id: str = DEFAULT_MODEL_ID,
-        revision: str = DEFAULT_MODEL_REVISION,
-        *,
-        device: str = "auto",
-        cache_dir: Optional[str] = None,
-        local_files_only: bool = False,
-        pathology_threshold: float = 0.50,
-        secondary_threshold: float = 0.35,
-    ):
-        self.model_id = model_id
-        self.revision = revision
-        self.cache_dir = cache_dir
-        self.local_files_only = local_files_only
-        self.pathology_threshold = pathology_threshold
-        self.secondary_threshold = secondary_threshold
+    def __init__(self, model_path: Optional[str] = None, device: str = "cpu"):
         self.device = torch.device(
-            "cuda" if device == "auto" and torch.cuda.is_available()
-            else "cpu" if device == "auto"
-            else device
+            device if torch.cuda.is_available() and device == "cuda" else "cpu"
         )
-        self.inference_lock = threading.RLock()
+        self._model: Optional[RadDinoClassifier] = None
+        self.classes = CLASS_LABELS
+        self.input_size = INPUT_SIZE
+        self.transform = transforms.Compose([
+            transforms.Resize(
+                self.input_size,
+                interpolation=transforms.InterpolationMode.BICUBIC,
+            ),
+            transforms.CenterCrop(self.input_size),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=_IMAGENET_MEAN, std=_IMAGENET_STD),
+        ])
+        self._load_model(model_path)
 
-        logger.info(
-            "Loading RAD-DINO CheXpert classifier %s@%s on %s...",
-            model_id,
-            revision[:12],
-            self.device,
-        )
-        self.processor = self._load_processor()
-        self.model = self._load_reviewed_checkpoint()
-        self.image_size = int(getattr(self.model.config, "image_size", 518))
-        self.patch_size = int(getattr(self.model.config, "patch_size", 14))
-        self.patch_grid_size = self.image_size // self.patch_size
-
-        logger.info(
-            "RAD-DINO chest classifier ready: input=%sx%s patch_grid=%sx%s labels=%s.",
-            self.image_size,
-            self.image_size,
-            self.patch_grid_size,
-            self.patch_grid_size,
-            len(CLASS_LABELS),
-        )
-
-    def _load_processor(self):
-        """Prefer the immutable local snapshot and contact the Hub only if absent."""
-        common = {
-            "pretrained_model_name_or_path": self.model_id,
-            "revision": self.revision,
-            "cache_dir": self.cache_dir,
-        }
-        try:
-            return AutoImageProcessor.from_pretrained(
-                **common,
-                local_files_only=True,
-            )
-        except OSError:
-            if self.local_files_only:
-                raise
-            logger.info("RAD-DINO processor not cached; downloading pinned revision.")
-            return AutoImageProcessor.from_pretrained(
-                **common,
-                local_files_only=False,
-            )
-
-    def _download(self, filename: str) -> str:
-        common = {
-            "repo_id": self.model_id,
-            "filename": filename,
-            "revision": self.revision,
-            "cache_dir": self.cache_dir,
-        }
-        try:
-            return hf_hub_download(**common, local_files_only=True)
-        except OSError:
-            if self.local_files_only:
-                raise
-            logger.info("RAD-DINO %s not cached; downloading pinned revision.", filename)
-            return hf_hub_download(**common, local_files_only=False)
-
-    def _load_reviewed_checkpoint(self) -> RadDinoCheXpertModel:
-        with open(self._download("config.json"), encoding="utf-8") as handle:
-            config_data = json.load(handle)
-
-        checkpoint_labels = [
-            config_data.get("id2label", {}).get(str(index))
-            for index in range(len(CLASS_LABELS))
+    def _load_model(self, model_path: Optional[str]):
+        candidate_paths = [
+            model_path,
+            "models/rad_dino_chest_xray_classifier.pth",
+            os.path.join(
+                os.path.dirname(os.path.dirname(__file__)),
+                "..", "models", "rad_dino_chest_xray_classifier.pth",
+            ),
         ]
-        if checkpoint_labels != CLASS_LABELS:
-            raise RuntimeError(
-                "Pinned RAD-DINO checkpoint labels changed; refusing unsafe label mapping."
-            )
-
-        config_data.pop("auto_map", None)
-        config_data["model_type"] = "dinov2"
-        config = Dinov2Config.from_dict(config_data)
-        model = RadDinoCheXpertModel(config)
-
-        state_dict = torch.load(
-            self._download("pytorch_model.bin"),
-            map_location="cpu",
-            weights_only=True,
+        resolved_path = next(
+            (os.path.abspath(path) for path in candidate_paths if path and os.path.isfile(path)),
+            None,
         )
-        if isinstance(state_dict, dict) and "state_dict" in state_dict:
-            state_dict = state_dict["state_dict"]
-        model.load_state_dict(state_dict, strict=True)
-        model.to(self.device)
-        model.eval()
+        if not resolved_path:
+            logger.warning("RAD-DINO checkpoint not found: %s", candidate_paths)
+            return
 
-        # Attribution only needs gradients for an input/intermediate tensor.
-        # Freezing parameters avoids allocating hundreds of MB of parameter grads.
-        for parameter in model.parameters():
-            parameter.requires_grad_(False)
-        return model
+        try:
+            config_path = os.path.join(os.path.dirname(resolved_path), "model_config.json")
+            model_name = DEFAULT_MODEL_NAME
+            num_classes = len(CLASS_LABELS)
+            if os.path.isfile(config_path):
+                with open(config_path, "r", encoding="utf-8") as handle:
+                    config = json.load(handle)
+                model_name = config.get("model_name", DEFAULT_MODEL_NAME)
+                num_classes = config.get("num_classes", len(CLASS_LABELS))
+                self.input_size = config.get("image_size", INPUT_SIZE)
+
+            self._model = RadDinoClassifier(model_name=model_name, num_classes=num_classes)
+            checkpoint = torch.load(resolved_path, map_location="cpu", weights_only=False)
+            if isinstance(checkpoint, dict) and "classifier_state_dict" in checkpoint:
+                self._model.classifier.load_state_dict(checkpoint["classifier_state_dict"])
+                val_acc = checkpoint.get("val_accuracy")
+                logger.info(
+                    "Loaded chest weights from %s%s",
+                    resolved_path,
+                    f" (validation accuracy: {val_acc:.2%})" if val_acc else "",
+                )
+            elif isinstance(checkpoint, dict):
+                self._model.load_state_dict(checkpoint, strict=False)
+            else:
+                logger.warning("Unexpected chest checkpoint format: %s", resolved_path)
+            self._model.to(self.device)
+            self._model.eval()
+        except Exception:
+            logger.exception("Failed to load reference RAD-DINO chest classifier")
+            self._model = None
 
     def preprocess(self, image: Image.Image) -> torch.Tensor:
-        """Apply the checkpoint's 518px radiograph preprocessing pipeline."""
-        inputs = self.processor(
-            images=image.convert("RGB"),
-            return_tensors="pt",
-        )
-        return inputs["pixel_values"].to(self.device)
+        if image.mode != "RGB":
+            image = image.convert("RGB")
+        tensor = self.transform(image)
+        if tensor.ndim == 3:
+            tensor = tensor.unsqueeze(0)
+        return tensor.to(self.device)
 
-    @torch.inference_mode()
+    @torch.no_grad()
     def predict(self, image: Image.Image) -> ClassificationResult:
-        with self.inference_lock:
-            logits = self.model(self.preprocess(image))
-            probabilities = torch.sigmoid(logits).float().cpu().numpy()[0]
-        return build_classification_result(
-            probabilities,
-            pathology_threshold=self.pathology_threshold,
-            secondary_threshold=self.secondary_threshold,
+        if self._model is None:
+            return ClassificationResult(
+                top_label=NO_FINDING_LABEL,
+                confidence=0.0,
+                all_scores={label: 0.0 for label in CLASS_LABELS},
+                severity="Normal",
+                is_low_confidence=True,
+            )
+
+        probabilities = torch.softmax(
+            self._model(self.preprocess(image)), dim=-1
+        ).cpu().numpy()[0]
+        all_scores = {
+            label: round(float(probabilities[index]), 4)
+            if index < len(probabilities) else 0.0
+            for index, label in enumerate(CLASS_LABELS)
+        }
+        top_idx = int(np.argmax(probabilities))
+        top_label = CLASS_LABELS[top_idx]
+        top_confidence = float(probabilities[top_idx])
+
+        if top_label != NO_FINDING_LABEL and top_confidence < MIN_PATHOLOGY_CONFIDENCE:
+            top_label = NO_FINDING_LABEL
+            top_confidence = float(all_scores.get(NO_FINDING_LABEL, 0.0))
+            top_idx = CLASS_LABELS.index(NO_FINDING_LABEL)
+
+        is_low_confidence = (
+            top_label != NO_FINDING_LABEL
+            and top_confidence < LOW_CONFIDENCE_CEILING
+        )
+        secondary_findings = [
+            {"label": label, "score": round(all_scores[label], 4)}
+            for label in PATHOLOGY_LABELS
+            if label != top_label and all_scores[label] >= SECONDARY_FINDING_THRESHOLD
+        ]
+        secondary_findings.sort(key=lambda item: item["score"], reverse=True)
+
+        return ClassificationResult(
+            top_label=top_label,
+            confidence=round(top_confidence, 4),
+            all_scores=all_scores,
+            severity=confidence_to_severity(top_confidence, top_label),
+            is_low_confidence=is_low_confidence,
+            secondary_findings=secondary_findings,
+            heatmap_target_label=top_label,
+            heatmap_target_idx=top_idx,
         )
 
-    def get_model(self) -> RadDinoCheXpertModel:
-        return self.model
+    def get_model(self) -> Optional[nn.Module]:
+        return self._model
 
     def get_transform(self):
-        """Compatibility accessor for callers that need the HF processor."""
-        return self.processor
+        return self.transform
 
-    def patch_grid_from_token_count(self, token_count: int) -> int:
-        """Validate the transformer patch-token geometry."""
-        grid = int(math.sqrt(token_count))
-        if grid * grid != token_count:
-            raise RuntimeError(f"RAD-DINO returned {token_count} non-square patch tokens.")
-        return grid
+    def get_processor(self):
+        return self.preprocess

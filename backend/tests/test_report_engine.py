@@ -19,6 +19,37 @@ def result(label="Glioma", confidence=0.91, severity="Severe"):
 
 
 class ReportSchemaTests(unittest.TestCase):
+    def test_image_aware_chest_report_may_differ_from_classifier(self):
+        classification = result(label="Pneumonia", confidence=0.82, severity="Moderate")
+        classification.all_scores = {
+            "Normal": 0.10,
+            "Pneumonia": 0.82,
+            "Tuberculosis": 0.08,
+        }
+        report = {
+            "findings": "Findings suspicious for tuberculosis.",
+            "impression": "1. Consider tuberculosis.",
+        }
+
+        self.assertTrue(
+            LLMReportEngine._is_chest_report_supported(
+                report, classification, allow_visual_details=True
+            )
+        )
+        self.assertFalse(
+            LLMReportEngine._is_chest_report_supported(
+                report, classification, allow_visual_details=False
+            )
+        )
+
+    def test_maira_plain_text_response_is_split_into_report_sections(self):
+        report = LLMReportEngine._normalize_maira_response({
+            "report": "FINDINGS: Mild bibasal opacity.\nIMPRESSION: Mild bibasal atelectatic change."
+        })
+
+        self.assertEqual(report["findings"], "Mild bibasal opacity.")
+        self.assertEqual(report["impression"], "Mild bibasal atelectatic change.")
+
     def test_json_parser_requires_grounded_clinical_sections(self):
         payload = {
             "technique": "Single image.",
@@ -147,6 +178,56 @@ class PatientTranslationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(output, "தமிழ் விளக்கம்")
         self.assertNotIn("Gemini", output)
         self.assertNotIn("Sarvam", output)
+
+
+class ProviderFallbackTests(unittest.IsolatedAsyncioTestCase):
+    @staticmethod
+    def chest_result():
+        return result(label="Atelectasis", confidence=0.82, severity="Moderate")
+
+    async def test_maira_is_used_before_existing_providers_for_chest_xray(self):
+        engine = LLMReportEngine(
+            maira_api_url="https://maira.example",
+            gemini_api_key="configured",
+            groq_api_key="configured",
+        )
+        engine._call_maira = AsyncMock(return_value={
+            "findings": "LUNGS/AIRWAYS: Mild bibasal linear opacity.",
+            "impression": "1. Mild bibasal atelectatic change.",
+        })
+        engine._call_gemini = AsyncMock(return_value=None)
+        engine._call_groq = AsyncMock(return_value=None)
+
+        output = await engine.generate_report(
+            self.chest_result(), "chest_xray", image=object()
+        )
+
+        self.assertEqual(output["llm_provider"], "maira-2")
+        engine._call_maira.assert_awaited_once()
+        engine._call_gemini.assert_not_awaited()
+        engine._call_groq.assert_not_awaited()
+
+    async def test_maira_failure_falls_back_to_gemini(self):
+        engine = LLMReportEngine(
+            maira_api_url="https://maira.example",
+            gemini_api_key="configured",
+            groq_api_key="configured",
+        )
+        engine._call_maira = AsyncMock(return_value=None)
+        engine._call_gemini = AsyncMock(return_value={
+            "findings": "LUNGS/AIRWAYS: Mild bibasal linear opacity.",
+            "impression": "1. Mild bibasal atelectatic change.",
+        })
+        engine._call_groq = AsyncMock(return_value=None)
+
+        output = await engine.generate_report(
+            self.chest_result(), "chest_xray", image=object()
+        )
+
+        self.assertEqual(output["llm_provider"], "gemini")
+        engine._call_maira.assert_awaited_once()
+        engine._call_gemini.assert_awaited_once()
+        engine._call_groq.assert_not_awaited()
 
 
 if __name__ == "__main__":

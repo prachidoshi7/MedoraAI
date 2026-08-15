@@ -10,7 +10,7 @@ export default function ResultPanel({ classification, scanType, analysisTimeMs }
   const { all_scores, confidence, severity, top_label } = classification;
   const scores = Object.entries(all_scores).sort(([, a], [, b]) => b - a);
   const modelName = ({
-    chest_xray: 'RAD-DINO + CheXpert',
+    chest_xray: 'RAD-DINO · 3-class research head',
     brain_mri: 'EfficientNetB3',
     lung_ct: 'Lung CNN',
     kidney_us: 'Renal CNN',
@@ -20,12 +20,12 @@ export default function ResultPanel({ classification, scanType, analysisTimeMs }
     <aside className="result-panel">
       <div className="finding-card">
         <div className="finding-card__top">
-          <p className="eyebrow">Primary finding</p>
+          <p className="eyebrow">Experimental classifier · secondary</p>
           <span className={`severity-badge severity-badge--${severity.toLowerCase()}`}>{severity}</span>
         </div>
         <h2>{top_label}</h2>
         <div className="confidence-row">
-          <span>Model match</span><strong>{(confidence * 100).toFixed(1)}%</strong>
+          <span>Uncalibrated model score</span><strong>{(confidence * 100).toFixed(1)}%</strong>
         </div>
         <div className="confidence-track"><span style={{ width: `${Math.min(confidence * 100, 100)}%` }} /></div>
         {classification.is_low_confidence && (
@@ -34,7 +34,7 @@ export default function ResultPanel({ classification, scanType, analysisTimeMs }
       </div>
 
       <div className="scores-card">
-        <div className="card-title-row"><p className="eyebrow">Class comparison</p><span>{scores.length} classes</span></div>
+        <div className="card-title-row"><p className="eyebrow">Experimental class comparison</p><span>{scores.length} classes</span></div>
         <div className="score-list">
           {scores.map(([label, score]) => (
             <div className={label === top_label ? 'is-primary' : ''} key={label}>
@@ -49,7 +49,7 @@ export default function ResultPanel({ classification, scanType, analysisTimeMs }
       <dl className="model-meta">
         <div><dt>Model</dt><dd>{modelName}</dd></div>
         <div><dt>Processing</dt><dd>{analysisTimeMs ? `${(analysisTimeMs / 1000).toFixed(1)} sec` : 'Archived'}</dd></div>
-        <div><dt>Status</dt><dd><i className="status-pulse" />Review ready</dd></div>
+        <div><dt>Role</dt><dd>Secondary research signal</dd></div>
       </dl>
     </aside>
   );

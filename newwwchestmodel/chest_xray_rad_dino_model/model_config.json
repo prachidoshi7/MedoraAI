@@ -1,0 +1,12 @@
+{
+    "model_name": "microsoft/rad-dino",
+    "num_classes": 3,
+    "classes": [
+        "normal",
+        "pneumonia",
+        "tuberculosis"
+    ],
+    "image_size": 518,
+    "hidden_size": 768,
+    "best_validation_accuracy": 0.7576953433307024
+}
