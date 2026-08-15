@@ -4,7 +4,7 @@ MedoraAI uses three production services:
 
 1. **Vercel** — React/Vite frontend
 2. **Neon** — PostgreSQL database for accounts, appointments, reports, and workflow metadata
-3. **Container backend with persistent storage** — FastAPI, ML models, uploaded scans, heatmaps, and avatars
+3. **Railway** — FastAPI, ML models, uploaded scans, heatmaps, and avatars
 
 The ML backend should not run as a Vercel Function. It loads PyTorch, TensorFlow, Transformers, and multiple model artifacts at startup, generates reports in background tasks, and writes medical-image files to disk.
 
@@ -17,15 +17,21 @@ The ML backend should not run as a Vercel Function. It loads PyTorch, TensorFlow
 
 The backend creates the schema and demo records on its first successful startup.
 
-## 2. Container backend
+## 2. Railway backend
 
-Build from the repository root:
+1. Create a Railway project and choose **Deploy from GitHub repo**.
+2. Select `prachidoshi7/MedoraAI` and the branch to deploy.
+3. Keep the service source at the repository root. Do not set `/backend` as the Root Directory because the Docker build also needs `models/` and `newwwchestmodel/`.
+4. Railway reads `railway.json`, builds `backend/Dockerfile`, and checks `/health` before making a deployment active.
+5. In **Networking**, generate a public Railway domain.
+
+The same image can be built locally from the repository root:
 
 ```bash
 docker build -f backend/Dockerfile -t medoraai-api .
 ```
 
-Required production environment variables:
+Add these Railway service variables:
 
 ```text
 DATABASE_URL=<pooled Neon connection string>
@@ -37,11 +43,11 @@ MAIRA_API_URL=<stable public MAIRA-2 service URL>
 
 Add any configured provider secrets (`GEMINI_API_KEY`, `GROQ_API_KEY`, `SARVAM_API_KEY`, and `HF_TOKEN`) through the host's secret manager.
 
-Mount a persistent disk at `/app/data`. Without that disk, uploaded scans, generated heatmaps, thumbnails, and profile images disappear on redeploy.
+Add a Railway volume and mount it at `/app/data`. Without that volume, uploaded scans, generated heatmaps, thumbnails, and profile images disappear on redeploy.
 
-Use `/health` as the health-check path. The container respects the host-provided `PORT` value.
+The container automatically respects Railway's `PORT` variable. Do not create a custom `PORT` value.
 
-The complete model set needs substantially more than a 512 MB free instance. Start with at least 4 GB RAM and verify real peak memory during startup and inference.
+The complete model set needs substantially more than a small shared instance. Start with at least 4 GB RAM and verify real peak memory during startup and inference. If Railway reports an out-of-memory restart, increase the service memory before changing application code.
 
 ## 3. Vercel frontend
 
@@ -54,7 +60,7 @@ Build Command: npm run build
 Output Directory: dist
 ```
 
-Add this Vercel environment variable for Production and Preview:
+Add this Vercel environment variable for Production and Preview using the Railway public domain:
 
 ```text
 VITE_API_BASE_URL=https://YOUR-BACKEND-DOMAIN
